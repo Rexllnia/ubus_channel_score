@@ -2,8 +2,19 @@
 #ifndef _CHANNEL_SCORE_CONFIG_H_
 #define _CHANNEL_SCORE_CONFIG_H_
 
+#define POPEN_CMD_ENABLE
+#define BRIDGE_PLATFORM
+
+#define MAX_POPEN_BUFFER_SIZE   4096
+
 #define FAIL       -1
 #define SUCCESS    0
+
+#define MAX_BAND_5G_CHANNEL_NUM 36
+
+#define PLATFORM_5G     5
+#define PLATFORM_2G     2
+#define PLATFORM_BOTH   0
 
 struct user_input {
     int code;

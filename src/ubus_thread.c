@@ -17,7 +17,7 @@
 
 
 
-struct channel_info g_channel_info_5g[36];
+struct channel_info g_channel_info_5g[MAX_BAND_5G_CHANNEL_NUM];
 
 extern sem_t g_semaphore;
 extern int g_status;
@@ -90,21 +90,23 @@ static void get_reply(struct uloop_timeout *t)
 	struct get_request *req = container_of(t, struct get_request, timeout);
 	int fds[2];
 	static struct blob_buf buf;
-	struct timeval tv;
-	long timestamp,time;
-	struct tm *tm;
-	char temp[20];
+
+	time_t current_time;
+	struct tm *local_time;  // 将时间戳转换为本地时间
+	
+	char temp[512];
 	int i;
 
 	blob_buf_init(&buf, 0);
 
 	/* timestamp */
-	gettimeofday(&tv, NULL);
-	timestamp = tv.tv_sec * 1000000 + tv.tv_usec;
-	tm = localtime(&time);
-	time = timestamp / 1000000;
-
-	sprintf(temp,"%ld",time);
+	current_time = time(NULL);
+	local_time = localtime(&current_time);
+  	sprintf(temp,"当前时间：%d年%d月%d日 %d:%d:%d", 
+    local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday, 
+    local_time->tm_hour, local_time->tm_min, local_time->tm_sec);
+	blobmsg_add_string(&buf, "current time",temp);
+	sprintf(temp,"%ld",current_time);
 	blobmsg_add_string(&buf, "timestamp",temp);
 
 	/* 5G */
@@ -201,8 +203,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		channel_bitmap_policy[i].type = BLOBMSG_TYPE_INT32;
 	}
 	
-	g_input.scan_time = 10;
-	g_input.channel_bitmap = 0;
+
 	
 	bitmap_5G = 0;
 	bitmap_2G = 0;
@@ -211,7 +212,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 
 	blobmsg_parse(scan_policy, ARRAY_SIZE(scan_policy), tb, blob_data(msg), blob_len(msg));
 
-	if (!(g_status == SCAN_IDLE || g_status == SCAN_NOT_START)) {
+	if (g_status == SCAN_BUSY) {
 
 		len = sizeof(*hreq) + sizeof(msgstr) + 1;
 		hreq = calloc(1, len);
@@ -224,7 +225,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 
 
 	if (tb[CODE] && tb[BAND] ) {
-
+		printf("g_status %d \r\n",g_status);
 		if (blobmsg_get_u32(tb[BAND]) == 5 || blobmsg_get_u32(tb[BAND]) == 2) {
 
 		} else {
@@ -248,16 +249,14 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		}
 
 		if (tb[CHANNEL_BITMAP] && blobmsg_check_array(tb[CHANNEL_BITMAP],BLOBMSG_TYPE_INT32)) {
-
+			printf("++++++++++++++++++++++++");
 			g_input.channel_num = blobmsg_check_array(tb[CHANNEL_BITMAP],BLOBMSG_TYPE_INT32);
 
 			blobmsg_parse_array(channel_bitmap_policy, ARRAY_SIZE(channel_bitmap_policy), channel_bitmap_array, blobmsg_data(tb[CHANNEL_BITMAP]), blobmsg_len(tb[CHANNEL_BITMAP]));
 			printf("len %d\n",g_input.channel_num);
 			for (i = 0;i < g_input.channel_num;i++) {
-
-
 				printf("%d\r\n",blobmsg_get_u32(channel_bitmap_array[i]));
-				if (blobmsg_get_u32(channel_bitmap_array[i]) >= 36 && blobmsg_get_u32(channel_bitmap_array[i]) <= 144) {
+				if (blobmsg_get_u32(channel_bitmap_array[i]) >= MAX_BAND_5G_CHANNEL_NUM && blobmsg_get_u32(channel_bitmap_array[i]) <= 144) {
 					if(blobmsg_get_u32(channel_bitmap_array[i])%4 != 0) {
 						len = sizeof(*hreq) + sizeof(msgstr) + 1;
 						hreq = calloc(1, len);
@@ -309,10 +308,10 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		pthread_mutex_lock(&g_mutex);
 		g_status = SCAN_BUSY;
 
-		memcpy(&scan_message.input,&g_input,sizeof(struct user_input));
-		strcpy(scan_message.message,"start scan");
+		// memcpy(&scan_message.input,&g_input,sizeof(struct user_input));
+		// strcpy(scan_message.message,"start scan");
 
-		udp_send(&scan_message,NULL);
+		// udp_send(&scan_message,NULL);
 		sem_post(&g_semaphore);
 		pthread_mutex_unlock(&g_mutex);
 		
@@ -384,6 +383,8 @@ static void server_main(void)
 void *ubus_thread(void *arg) 
 {
 	const char *ubus_socket = NULL;
+
+
 
 	uloop_init();
 	signal(SIGPIPE, SIG_IGN);

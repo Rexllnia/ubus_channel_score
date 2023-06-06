@@ -66,9 +66,9 @@ void print_bits(long num) {
 int get_country_channel_bitmap(int bw,long *bitmap_2G,long *bitmap_5G,int band)
 {
 
-#ifdef unifyframework
+#ifdef UNIFY_FRAMEWORK_ENABLE
     uf_cmd_msg_t *msg_obj;
-#elif defined popen_cmd
+#elif defined POPEN_CMD_ENABLE
     char cmd[MAX_POPEN_BUFFER_SIZE];
 #endif     
     int ret;
@@ -109,7 +109,7 @@ int get_country_channel_bitmap(int bw,long *bitmap_2G,long *bitmap_5G,int band)
     param_input = json_object_to_json_string(input_param_root);
 	printf("%s\n",param_input);
 
-#ifdef unifyframework
+#ifdef UNIFY_FRAMEWORK_ENABLE
     msg_obj = (uf_cmd_msg_t*)malloc(sizeof(uf_cmd_msg_t));
     if (msg_obj == NULL) {
         return FAIL;
@@ -124,7 +124,7 @@ int get_country_channel_bitmap(int bw,long *bitmap_2G,long *bitmap_5G,int band)
     ret = uf_client_call(msg_obj, &rbuf, NULL);
     printf("%s\n",rbuf);
 
-#elif defined popen_cmd
+#elif defined POPEN_CMD_ENABLE
 	printf("%s\n",param_input);
     sprintf(cmd,"dev_sta get -m country_channel '%s'",param_input);
     printf("%s\r\n",cmd);
@@ -171,19 +171,19 @@ int get_country_channel_bitmap(int bw,long *bitmap_2G,long *bitmap_5G,int band)
       free(rbuf);
     }
 
-#ifdef unifyframework
+#ifdef UNIFY_FRAMEWORK_ENABLE
     free(msg_obj);
 #endif
 
 	return SUCCESS;
 }
-#elif defined bridge
+#elif defined BRIDGE_PLATFORM
 int get_country_channel_bitmap(int bw,long *bitmap_2G,long *bitmap_5G,int band)
 {
 
-#ifdef unifyframework
+#ifdef UNIFY_FRAMEWORK_ENABLE
     uf_cmd_msg_t *msg_obj;
-#elif defined popen_cmd
+#elif defined POPEN_CMD_ENABLE
     char cmd[MAX_POPEN_BUFFER_SIZE];
 #endif     
     int ret;
@@ -226,7 +226,7 @@ int get_country_channel_bitmap(int bw,long *bitmap_2G,long *bitmap_5G,int band)
     param_input = json_object_to_json_string(input_param_root);
 	printf("%s\n",param_input);
 
-#ifdef unifyframework
+#ifdef UNIFY_FRAMEWORK_ENABLE
     msg_obj = (uf_cmd_msg_t*)malloc(sizeof(uf_cmd_msg_t));
     if (msg_obj == NULL) {
         return FAIL;
@@ -241,7 +241,7 @@ int get_country_channel_bitmap(int bw,long *bitmap_2G,long *bitmap_5G,int band)
     ret = uf_client_call(msg_obj, &rbuf, NULL);
     printf("%s\n",rbuf);
 
-#elif defined popen_cmd
+#elif defined POPEN_CMD_ENABLE
 	printf("%s\n",param_input);
     sprintf(cmd,"dev_sta get -m country_channel '%s'",param_input);
     printf("%s\r\n",cmd);
@@ -282,7 +282,7 @@ int get_country_channel_bitmap(int bw,long *bitmap_2G,long *bitmap_5G,int band)
       free(rbuf);
     }
 
-#ifdef unifyframework
+#ifdef UNIFY_FRAMEWORK_ENABLE
     free(msg_obj);
 #endif
 

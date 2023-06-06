@@ -40,10 +40,11 @@ endef
 define Package/$(PKG_NAME)/install	
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/channel_score.init $(1)/etc/init.d/channel_score
-	
 	$(INSTALL_DIR) $(1)/etc
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/channel_score $(1)/etc/channel_score
 endef
  
+
+
 $(eval $(call BuildPackage,$(PKG_NAME)))
 # feeds/wireless/ruijie/wifi_services

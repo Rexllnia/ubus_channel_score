@@ -1,6 +1,6 @@
 #!/bin/sh
 
-ipv4_addr=192.168.120.100
+ipv4_addr=192.168.122.186
 port=54133
 pass=d1917d08b9422936
 name=root
