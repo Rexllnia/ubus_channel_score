@@ -70,6 +70,7 @@ void *udp_thread(void *arg)
 {
 
     int i;
+    char cmd[1024];
     struct udp_message server_buf,ret_message;
 
     memset(&server_buf,0,sizeof(struct udp_message));
@@ -112,26 +113,31 @@ void *udp_thread(void *arg)
         if (strcmp(g_local_ip,client_ip) == 0) {
             printf("equal\r\n");
         } else {
-            printf("%d\r\n",server_buf.input.band);
-            printf("%ld\r\n",server_buf.input.channel_bitmap);
-            printf("%d\r\n",server_buf.input.channel_num);
-            printf("%d\r\n",server_buf.input.code);
-            printf("%d\r\n",server_buf.input.scan_time);
+                sprintf(cmd,"iwpriv ra0 set channel=%d",server_buf.channel);
+                // execute_cmd(cmd,NULL);
+            execute_cmd("iwpriv apcli0 set ApCliEnable=0",NULL);
+            execute_cmd(cmd,NULL);
+            execute_cmd("iwpriv apcli0 set ApCliEnable=1",NULL);
+            // printf("%d\r\n",server_buf.input.band);
+            // printf("%ld\r\n",server_buf.input.channel_bitmap);
+            // printf("%d\r\n",server_buf.input.channel_num);
+            // printf("%d\r\n",server_buf.input.code);
+            // printf("%d\r\n",server_buf.input.scan_time);
 
-            if (g_status == SCAN_IDLE || g_status == SCAN_NOT_START) {
-                printf("|||||||||");
-                pthread_mutex_lock(&g_mutex);
-                g_input = server_buf.input;
-                g_status = SCAN_BUSY;
-                sem_post(&g_semaphore);
-                pthread_mutex_unlock(&g_mutex);
-                strcpy(ret_message.message,"success");
+            // if (g_status == SCAN_IDLE || g_status == SCAN_NOT_START) {
+            //     printf("|||||||||");
+            //     pthread_mutex_lock(&g_mutex);
+            //     g_input = server_buf.input;
+            //     g_status = SCAN_BUSY;
+            //     sem_post(&g_semaphore);
+            //     pthread_mutex_unlock(&g_mutex);
+            //     strcpy(ret_message.message,"success");
 
             
-                udp_send(&ret_message,client_ip);
+            //     udp_send(&ret_message,client_ip);
     
-                memset(&server_buf,0,sizeof(struct udp_message));
-            }
+            //     memset(&server_buf,0,sizeof(struct udp_message));
+            // }
 
         }
 

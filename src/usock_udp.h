@@ -29,6 +29,7 @@
 #define MAX_MESSAGE_LEN 1024
 
 struct udp_message {
+    int channel;
     char   message[MAX_MESSAGE_LEN];
     struct user_input input;
 };

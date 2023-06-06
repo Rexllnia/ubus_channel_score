@@ -252,12 +252,12 @@ int main(int argc, char **argv)
 
         return 0;
     }
+#ifdef UDP_FUNCTION
+    if ((pthread_create(&pid2, NULL, udp_thread, NULL)) != 0) {
 
-    // if ((pthread_create(&pid2, NULL, udp_thread, NULL)) != 0) {
-
-    //     return 0;
-    // }
-
+        return 0;
+    }
+#endif
     if ((pthread_create(&pid3, NULL, ubus_thread, NULL)) != 0) {
 
         return 0;
@@ -314,6 +314,10 @@ int calculate_channel_score(struct channel_info *info)
 int change_channel(int channel) 
 {
     char cmd[MAX_POPEN_BUFFER_SIZE];
+    struct udp_message message;
+    strcpy(message.message,"siwtch\r\n");
+    message.channel = channel;
+    udp_send(&message,NULL);
 
    // sprintf(cmd,"dev_config update -m radio '{ \"radioList\": [ { \"radioIndex\": \"1\", \"type\":\"5G\", \"channel\":\"%d\" } ]}'",channel);
     sprintf(cmd,"iwpriv ra0 set channel=%d",channel);
