@@ -28,6 +28,8 @@ static struct ubus_subscriber test_event;
 static struct blob_buf b;
 struct user_input g_input;
 
+struct device_info g_device_list[32];
+int g_device_list_len;
 
 struct scan_request {
 	struct ubus_request_data req;
@@ -94,6 +96,47 @@ static void scan_reply(struct uloop_timeout *t)
 	req->fd = fds[1];
 	free(req);
 }
+static void get_online_device(struct device_info *device_list,int *list_len)
+{
+	char *rbuf;
+
+	int i;
+
+	json_object *rbuf_root;
+	json_object *list_all_obj;
+	json_object *list_pair_obj;
+	json_object *sn_obj,*role_obj;
+
+	execute_cmd("dev_sta get -m wds_list_all",&rbuf);
+
+	rbuf_root = json_tokener_parse(rbuf);
+	list_all_obj = json_object_object_get(rbuf_root,"list_all");
+	json_object *list_all_elem = json_object_array_get_idx(list_all_obj,0);
+	list_pair_obj = json_object_object_get(list_all_elem,"list_pair");
+
+	*list_len = json_object_array_length(list_pair_obj);
+
+	for (i = 0;i < json_object_array_length(list_pair_obj);i++) {
+		json_object *list_pair_elem;
+		list_pair_elem = json_object_array_get_idx(list_pair_obj,i);
+		sn_obj = json_object_object_get(list_pair_elem,"sn");
+		role_obj = json_object_object_get(list_pair_elem,"role");
+		strcpy(device_list[i].series_no,json_object_get_string(sn_obj));
+		strcpy(device_list[i].role,json_object_get_string(role_obj));
+	}
+
+	free(rbuf);
+	json_object_put(rbuf_root);
+}
+int find_ap(struct device_info *device_list,int list_len) 
+{
+	int i;
+	for (i = 0;i < list_len;i++) {
+		if (strcmp(device_list[i].role,"ap") == 0) {
+			return i;
+		}
+	}
+}
 static void realtime_get_reply(struct uloop_timeout *t)
 {
 	struct realtime_get_request *req = container_of(t, struct realtime_get_request, timeout);
@@ -103,76 +146,23 @@ static void realtime_get_reply(struct uloop_timeout *t)
 	char temp[512];
 	int i;
 
-	struct tm *local_time;  // 将时间戳转换为本地时间
-
 	blob_buf_init(&buf, 0);
 
-	local_time = localtime(&g_current_time);
-	sprintf(temp,"当前时间：%d年%d月%d日 %d:%d:%d", 
-	local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday, 
-	local_time->tm_hour, local_time->tm_min, local_time->tm_sec);
-	blobmsg_add_string(&buf, "current time",temp);
-	sprintf(temp,"%ld",g_current_time);
-	blobmsg_add_string(&buf, "timestamp",temp);
+	/* find AP */
+	i = find_ap(g_device_list,g_device_list_len);
+	memcpy(g_device_list[i].channel_info,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
+	g_device_list[i].status = g_status;
+	g_device_list[i].input = g_input;
+	g_device_list[i].timestamp = time(NULL);
 
-	/* 5G */
-	void * const BAND_5G_obj = blobmsg_open_table(&buf, NULL);
-	blobmsg_add_string(&buf, "band","5");
-
-	if (g_status == SCAN_BUSY) { 
-		blobmsg_add_string(&buf, "status","busy");
-		blobmsg_add_string(&buf, "status_code","1");
-	} else if (g_status == SCAN_IDLE) {
-		blobmsg_add_string(&buf, "status","idle");
-		blobmsg_add_string(&buf, "status_code","2");
-	} else if (g_status == SCAN_NOT_START) {
-		blobmsg_add_string(&buf, "status","not start");
-		blobmsg_add_string(&buf, "status_code","0");
+	/* scan list*/
+	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
+	
+	for (i = 0;i < g_device_list_len;i++) {
+		add_device_info_blobmsg(&buf,&g_device_list[i]);
 	}
 
-	void * const tbl_a = blobmsg_open_array(&buf, "score_list");
-	
-
-	// add_channel_info_blobmsg(&buf,realtime_channel_info_5g,g_input.channel_num);
-	for (i = 0; i < g_input.channel_num;i++) {
-		void * const obj = blobmsg_open_table(&buf, NULL);
-
-		sprintf(temp,"%d",realtime_channel_info_5g[i].channel);
-		blobmsg_add_string(&buf, "channel",temp);
-		
-		sprintf(temp,"%d",realtime_channel_info_5g[i].floornoise);
-		blobmsg_add_string(&buf, "floornoise", temp);
-
-		sprintf(temp,"%d",realtime_channel_info_5g[i].utilization);
-		blobmsg_add_string(&buf, "utilization", temp);
-
-		sprintf(temp,"%d",realtime_channel_info_5g[i].bw);
-		blobmsg_add_string(&buf, "bw", temp);
-		
-		sprintf(temp,"%d",realtime_channel_info_5g[i].obss_util);
-		blobmsg_add_string(&buf, "obss_util", temp);
-		
-		sprintf(temp,"%d",realtime_channel_info_5g[i].tx_util);
-		blobmsg_add_string(&buf, "tx_util", temp);
-
-		sprintf(temp,"%d",realtime_channel_info_5g[i].rx_util);
-		blobmsg_add_string(&buf, "rx_util", temp);
-
-		sprintf(temp,"%d",realtime_channel_info_5g[i].score);
-		blobmsg_add_string(&buf, "score", temp);
-
-		blobmsg_close_table(&buf, obj);
-	}
-	blobmsg_close_array(&buf, tbl_a);
-	
-	blobmsg_close_table(&buf, BAND_5G_obj);
-
-	/* 2G */
-	void * const BAND_2G_obj = blobmsg_open_table(&buf, NULL);
-
-	blobmsg_add_string(&buf, "band","2");
-	
-	blobmsg_close_table(&buf, BAND_2G_obj);
+	blobmsg_close_array(&buf, scan_list_obj);
 
 	ubus_send_reply(ctx, &req->req, buf.head);
 
@@ -188,7 +178,85 @@ static void realtime_get_reply(struct uloop_timeout *t)
 	
 	free(req);
 }
+static void add_channel_score_blobmsg(struct blob_buf *buf, struct channel_info *channel_info)
+{
+	char *temp[64];
+	void *const channel_score_table = blobmsg_open_table(buf, NULL);
+	sprintf(temp,"%d",channel_info->channel);
+	blobmsg_add_string(buf,"channel",temp);
+	sprintf(temp,"%d",channel_info->score);
+	blobmsg_add_string(buf,"score",temp);
+	blobmsg_close_table(buf, channel_score_table);
+}
+static void add_score_list_blobmsg(struct blob_buf *buf,int channel_num,struct channel_info *channel_info_list)
+{
+	int i;
+	void * const score_list = blobmsg_open_array(buf, "score_list");
 
+	for (i = 0;i < channel_num;i++) {
+		add_channel_score_blobmsg(buf,&channel_info_list[i]);
+	}
+	blobmsg_close_array(buf, score_list);
+
+}
+static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *device)
+{
+	
+	void * const device_obj = blobmsg_open_table(buf, NULL);
+	blobmsg_add_string(buf, "SN",device->series_no);
+	blobmsg_add_string(buf, "role",device->role);
+	
+	add_timestamp_blobmsg(buf,&(device->timestamp));
+	
+	
+	/* 5G */
+	void * const BAND_5G_obj = blobmsg_open_table(buf, NULL);
+	blobmsg_add_string(buf, "band","5");
+
+	if (g_status == SCAN_BUSY) { 
+		blobmsg_add_string(buf, "status","busy");
+		blobmsg_add_string(buf, "status_code","1");
+	} else if (g_status == SCAN_IDLE) {
+		blobmsg_add_string(buf, "status","idle");
+		blobmsg_add_string(buf, "status_code","2");
+	} else if (g_status == SCAN_NOT_START) {
+		blobmsg_add_string(buf, "status","not start");
+		blobmsg_add_string(buf, "status_code","0");
+	}
+
+	void *const bw20_table = blobmsg_open_table(buf, NULL);
+	blobmsg_add_string(buf,"bw","20");
+	add_score_list_blobmsg(buf,device->input.channel_num,device->channel_info);
+	// add_channel_info_blobmsg(buf,realtime_channel_info_5g,g_input.channel_num);
+	blobmsg_close_table(buf, bw20_table);
+
+	void *const bw40_table = blobmsg_open_table(buf, NULL);
+	blobmsg_add_string(buf,"bw","40");
+	// add_score_list_blobmsg(buf);
+	// add_channel_info_blobmsg(buf,realtime_channel_info_5g,g_input.channel_num);
+	blobmsg_close_table(buf, bw40_table);
+
+	void *const bw80_table = blobmsg_open_table(buf, NULL);
+	blobmsg_add_string(buf,"bw","80");
+	// add_score_list_blobmsg(buf);
+	// add_channel_info_blobmsg(buf,realtime_channel_info_5g,g_input.channel_num);
+	blobmsg_close_table(buf, bw80_table);
+	
+	blobmsg_close_table(buf, BAND_5G_obj);
+	blobmsg_close_table(buf, device_obj);
+}
+static void add_timestamp_blobmsg(struct blob_buf *buf,time_t *timestamp)
+{
+	char temp[256];
+	struct tm *local_time;  // 将时间戳转换为本地时间
+	local_time = localtime(timestamp);
+	sprintf(temp,"当前时间：%d年%d月%d日 %d:%d:%d", 
+	local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday, 
+	local_time->tm_hour, local_time->tm_min, local_time->tm_sec);
+	blobmsg_add_string(buf, "current time",temp);
+	sprintf(temp,"%ld",*timestamp);
+	blobmsg_add_string(buf, "timestamp",temp);
+}
 static void add_channel_info_blobmsg(struct blob_buf *buf,struct channel_info *channel_info,int channel_num)
 {
 	char temp[512];
@@ -343,12 +411,8 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		channel_bitmap_policy[i].type = BLOBMSG_TYPE_INT32;
 	}
 	
-
-	
 	bitmap_5G = 0;
 	bitmap_2G = 0;
-
-	
 
 	blobmsg_parse(scan_policy, ARRAY_SIZE(scan_policy), tb, blob_data(msg), blob_len(msg));
 
@@ -362,7 +426,6 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		sprintf(hreq->data,"(scanning)");
 		goto error;
 	}
-
 
 	if (tb[CODE] && tb[BAND] ) {
 		printf("g_status %d \r\n",g_status);
@@ -396,7 +459,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 			printf("len %d\n",g_input.channel_num);
 			for (i = 0;i < g_input.channel_num;i++) {
 				printf("%d\r\n",blobmsg_get_u32(channel_bitmap_array[i]));
-				if(blobmsg_get_u32(channel_bitmap_array[i]) < 36 || blobmsg_get_u32(channel_bitmap_array[i]) > 144)
+				if(blobmsg_get_u32(channel_bitmap_array[i]) < 36 || blobmsg_get_u32(channel_bitmap_array[i]) > 181)
 				{
 						len = sizeof(*hreq) + sizeof(msgstr) + 1;
 						hreq = calloc(1, len);
@@ -456,6 +519,8 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		}
 		sprintf(hreq->data,"{\"code\":%d,\"band\":%d,\"scan_time\":%d}",g_input.code,g_input.band,g_input.scan_time);	
 		pthread_mutex_lock(&g_mutex);
+
+		get_online_device(g_device_list,&g_device_list_len);
 		g_status = SCAN_BUSY;
 
 		memcpy(&scan_message.input,&g_input,sizeof(struct user_input));
