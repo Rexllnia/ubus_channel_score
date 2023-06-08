@@ -5,6 +5,8 @@ extern sem_t g_semaphore;
 extern volatile int g_status;
 extern pthread_mutex_t g_mutex;
 extern struct user_input g_input;
+extern struct channel_info realtime_channel_info_5g[36];
+struct channel_info CPE_channel_info[2][36];
 
 int rlink_get_localip(const char *ifname,char *ip)
 {
@@ -113,31 +115,35 @@ void *udp_thread(void *arg)
         if (strcmp(g_local_ip,client_ip) == 0) {
             printf("equal\r\n");
         } else {
-                sprintf(cmd,"iwpriv ra0 set channel=%d",server_buf.channel);
-                // execute_cmd(cmd,NULL);
-            execute_cmd("iwpriv apcli0 set ApCliEnable=0",NULL);
-            execute_cmd(cmd,NULL);
-            execute_cmd("iwpriv apcli0 set ApCliEnable=1",NULL);
-            // printf("%d\r\n",server_buf.input.band);
-            // printf("%ld\r\n",server_buf.input.channel_bitmap);
-            // printf("%d\r\n",server_buf.input.channel_num);
-            // printf("%d\r\n",server_buf.input.code);
-            // printf("%d\r\n",server_buf.input.scan_time);
+            if(server_buf.opcode == OPCODE_SCAN) {
+                printf("%d\r\n",server_buf.input.band);
+                printf("%ld\r\n",server_buf.input.channel_bitmap);
+                printf("%d\r\n",server_buf.input.channel_num);
+                printf("%d\r\n",server_buf.input.code);
+                printf("%d\r\n",server_buf.input.scan_time);
+                if (g_status == SCAN_IDLE || g_status == SCAN_NOT_START) {
+                    printf("|||||||||");
+                    pthread_mutex_lock(&g_mutex);
+                    g_input = server_buf.input;
+                    g_status = SCAN_BUSY;
+                    sem_post(&g_semaphore);
+                    pthread_mutex_unlock(&g_mutex);
+                    strcpy(ret_message.message,"success");
 
-            // if (g_status == SCAN_IDLE || g_status == SCAN_NOT_START) {
-            //     printf("|||||||||");
-            //     pthread_mutex_lock(&g_mutex);
-            //     g_input = server_buf.input;
-            //     g_status = SCAN_BUSY;
-            //     sem_post(&g_semaphore);
-            //     pthread_mutex_unlock(&g_mutex);
-            //     strcpy(ret_message.message,"success");
+                
+                    udp_send(&ret_message,client_ip);
+        
+                    memset(&server_buf,0,sizeof(struct udp_message));
+                }                
+            } else if (server_buf.opcode == OPCODE_GET) {
+                
+            } else if (server_buf.opcode == OPCODE_REALTIME_GET) {
+                memcpy(ret_message.channel_info,realtime_channel_info_5g,MAX_BAND_5G_CHANNEL_NUM * sizeof(struct channel_info));
+                udp_send(&ret_message,client_ip);
+            } else if (server_buf.opcode == OPCODE_GET_REPLY) {
 
-            
-            //     udp_send(&ret_message,client_ip);
-    
-            //     memset(&server_buf,0,sizeof(struct udp_message));
-            // }
+            }
+
 
         }
 

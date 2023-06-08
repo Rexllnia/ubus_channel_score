@@ -41,6 +41,7 @@
 int calculate_channel_score(struct channel_info *info);
 int change_channel(int channel);
 extern struct channel_info g_channel_info_5g[36];
+struct channel_info realtime_channel_info_5g[36];
 extern struct user_input g_input;
 volatile int g_status,g_scan_time;
 volatile long g_scan_timestamp;
@@ -48,6 +49,7 @@ extern long g_bitmap_2G,g_bitmap_5G;
 pthread_mutex_t g_mutex;
 pthread_t pid1, pid2 ,pid3;
 sem_t g_semaphore;
+time_t g_current_time;
 
 int quick_select(int* arr, int len, int k)
 {
@@ -208,29 +210,36 @@ void *scan_thread(void *arg)
 
     
     int i,j,score,len;
-    struct channel_info channel_info_5g[36];
+    
     
     while (1) {
         sem_wait(&g_semaphore);
         if (g_status == SCAN_BUSY) {
-
+            memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
             for (j = 0,i = 0; i < sizeof(long) * ONE_BYTE; i++) {
                 if ((g_input.channel_bitmap& (1L << i)) != 0) {
                     
-                    channel_info_5g[j].channel = bitmap_to_channel(i);
-                    printf("Bit to channel %d >>>>>\n",channel_info_5g[j].channel);
+                    realtime_channel_info_5g[j].channel = bitmap_to_channel(i);
+                    printf("Bit to channel %d >>>>>\n",realtime_channel_info_5g[j].channel);
                     
-                    change_channel(channel_info_5g[j].channel);
+                    change_channel(realtime_channel_info_5g[j].channel);
 
-                    channel_scan(&channel_info_5g[j],g_input.scan_time);
+                    channel_scan(&realtime_channel_info_5g[j],g_input.scan_time);
+                    sleep(1);
                     printf("%ld\r\n",g_input.channel_bitmap);
-                    channel_info_5g[j].score = calculate_channel_score(&channel_info_5g[j]);
+                    realtime_channel_info_5g[j].score = calculate_channel_score(&realtime_channel_info_5g[j]);
                     printf("------------------\r\n");
                     j++;  
                 }
             }
+
+            /* timestamp */
+            g_current_time = time(NULL);
+            
+
+
             pthread_mutex_lock(&g_mutex);
-            memcpy(g_channel_info_5g,channel_info_5g,sizeof(channel_info_5g));
+            memcpy(g_channel_info_5g,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
             g_status = SCAN_IDLE;
             g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
             pthread_mutex_unlock(&g_mutex);
@@ -314,13 +323,9 @@ int calculate_channel_score(struct channel_info *info)
 int change_channel(int channel) 
 {
     char cmd[MAX_POPEN_BUFFER_SIZE];
-    struct udp_message message;
-    strcpy(message.message,"siwtch\r\n");
-    message.channel = channel;
-    udp_send(&message,NULL);
-
-   // sprintf(cmd,"dev_config update -m radio '{ \"radioList\": [ { \"radioIndex\": \"1\", \"type\":\"5G\", \"channel\":\"%d\" } ]}'",channel);
-    sprintf(cmd,"iwpriv ra0 set channel=%d",channel);
+    printf("change to channel %d",channel);
+   sprintf(cmd,"dev_config update -m radio '{ \"radioList\": [ { \"radioIndex\": \"1\", \"type\":\"5G\", \"channel\":\"%d\" } ]}'",channel);
+    // sprintf(cmd,"iwpriv ra0 set channel=%d",channel);
     execute_cmd(cmd,NULL);
 
     return 0;

@@ -18,7 +18,8 @@
 
 
 struct channel_info g_channel_info_5g[MAX_BAND_5G_CHANNEL_NUM];
-
+extern struct channel_info realtime_channel_info_5g[36];
+extern time_t g_current_time;
 extern sem_t g_semaphore;
 extern int g_status;
 extern pthread_mutex_t g_mutex;
@@ -42,6 +43,13 @@ struct get_request {
 	int idx;
 	char data[];
 };
+struct realtime_get_request {
+	struct ubus_request_data req;
+	struct uloop_timeout timeout;
+	int fd;
+	int idx;
+	char data[];
+};
 static const struct blobmsg_policy scan_policy[] = {
 	[CODE] = { .name = "code", .type = BLOBMSG_TYPE_INT32 },
 	[BAND] = { .name = "band", .type = BLOBMSG_TYPE_INT32 },
@@ -50,6 +58,7 @@ static const struct blobmsg_policy scan_policy[] = {
 };
 static const struct ubus_method channel_score_methods[] = {
 	UBUS_METHOD_NOARG("get", get),
+	UBUS_METHOD_NOARG("realtime_get",realtime_get),
 	UBUS_METHOD("scan", scan, scan_policy),
 };
 
@@ -85,28 +94,159 @@ static void scan_reply(struct uloop_timeout *t)
 	req->fd = fds[1];
 	free(req);
 }
+static void realtime_get_reply(struct uloop_timeout *t)
+{
+	struct realtime_get_request *req = container_of(t, struct realtime_get_request, timeout);
+	int fds[2];
+	static struct blob_buf buf;
+	
+	char temp[512];
+	int i;
+
+	struct tm *local_time;  // 将时间戳转换为本地时间
+
+	blob_buf_init(&buf, 0);
+
+	local_time = localtime(&g_current_time);
+	sprintf(temp,"当前时间：%d年%d月%d日 %d:%d:%d", 
+	local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday, 
+	local_time->tm_hour, local_time->tm_min, local_time->tm_sec);
+	blobmsg_add_string(&buf, "current time",temp);
+	sprintf(temp,"%ld",g_current_time);
+	blobmsg_add_string(&buf, "timestamp",temp);
+
+	/* 5G */
+	void * const BAND_5G_obj = blobmsg_open_table(&buf, NULL);
+	blobmsg_add_string(&buf, "band","5");
+
+	if (g_status == SCAN_BUSY) { 
+		blobmsg_add_string(&buf, "status","busy");
+		blobmsg_add_string(&buf, "status_code","1");
+	} else if (g_status == SCAN_IDLE) {
+		blobmsg_add_string(&buf, "status","idle");
+		blobmsg_add_string(&buf, "status_code","2");
+	} else if (g_status == SCAN_NOT_START) {
+		blobmsg_add_string(&buf, "status","not start");
+		blobmsg_add_string(&buf, "status_code","0");
+	}
+
+	void * const tbl_a = blobmsg_open_array(&buf, "score_list");
+	
+
+	// add_channel_info_blobmsg(&buf,realtime_channel_info_5g,g_input.channel_num);
+	for (i = 0; i < g_input.channel_num;i++) {
+		void * const obj = blobmsg_open_table(&buf, NULL);
+
+		sprintf(temp,"%d",realtime_channel_info_5g[i].channel);
+		blobmsg_add_string(&buf, "channel",temp);
+		
+		sprintf(temp,"%d",realtime_channel_info_5g[i].floornoise);
+		blobmsg_add_string(&buf, "floornoise", temp);
+
+		sprintf(temp,"%d",realtime_channel_info_5g[i].utilization);
+		blobmsg_add_string(&buf, "utilization", temp);
+
+		sprintf(temp,"%d",realtime_channel_info_5g[i].bw);
+		blobmsg_add_string(&buf, "bw", temp);
+		
+		sprintf(temp,"%d",realtime_channel_info_5g[i].obss_util);
+		blobmsg_add_string(&buf, "obss_util", temp);
+		
+		sprintf(temp,"%d",realtime_channel_info_5g[i].tx_util);
+		blobmsg_add_string(&buf, "tx_util", temp);
+
+		sprintf(temp,"%d",realtime_channel_info_5g[i].rx_util);
+		blobmsg_add_string(&buf, "rx_util", temp);
+
+		sprintf(temp,"%d",realtime_channel_info_5g[i].score);
+		blobmsg_add_string(&buf, "score", temp);
+
+		blobmsg_close_table(&buf, obj);
+	}
+	blobmsg_close_array(&buf, tbl_a);
+	
+	blobmsg_close_table(&buf, BAND_5G_obj);
+
+	/* 2G */
+	void * const BAND_2G_obj = blobmsg_open_table(&buf, NULL);
+
+	blobmsg_add_string(&buf, "band","2");
+	
+	blobmsg_close_table(&buf, BAND_2G_obj);
+
+	ubus_send_reply(ctx, &req->req, buf.head);
+
+	if (pipe(fds) == -1) {
+		fprintf(stderr, "Failed to create pipe\n");
+		return;
+	}
+    
+	ubus_request_set_fd(ctx, &req->req, fds[0]);
+	ubus_complete_deferred_request(ctx, &req->req, 0);
+	req->fd = fds[1];
+
+	
+	free(req);
+}
+
+static void add_channel_info_blobmsg(struct blob_buf *buf,struct channel_info *channel_info,int channel_num)
+{
+	char temp[512];
+	int i = 0;
+
+	if (channel_info == NULL || buf == NULL) {
+		return;
+	}
+
+	for (i = 0; i < channel_num;i++) {
+		void * const obj = blobmsg_open_table(buf, NULL);
+
+		sprintf(temp,"%d",channel_info[i].channel);
+		blobmsg_add_string(buf, "channel",temp);
+		
+		sprintf(temp,"%d",channel_info[i].floornoise);
+		blobmsg_add_string(buf, "floornoise", temp);
+
+		sprintf(temp,"%d",channel_info[i].utilization);
+		blobmsg_add_string(buf, "utilization", temp);
+
+		sprintf(temp,"%d",channel_info[i].bw);
+		blobmsg_add_string(buf, "bw", temp);
+		
+		sprintf(temp,"%d",channel_info[i].obss_util);
+		blobmsg_add_string(buf, "obss_util", temp);
+		
+		sprintf(temp,"%d",channel_info[i].tx_util);
+		blobmsg_add_string(buf, "tx_util", temp);
+
+		sprintf(temp,"%d",channel_info[i].rx_util);
+		blobmsg_add_string(buf, "rx_util", temp);
+
+		sprintf(temp,"%d",channel_info[i].score);
+		blobmsg_add_string(buf, "score", temp);
+
+		blobmsg_close_table(buf, obj);
+	}
+}
 static void get_reply(struct uloop_timeout *t)
 {
 	struct get_request *req = container_of(t, struct get_request, timeout);
 	int fds[2];
 	static struct blob_buf buf;
-
-	time_t current_time;
-	struct tm *local_time;  // 将时间戳转换为本地时间
 	
 	char temp[512];
 	int i;
 
+	struct tm *local_time;  // 将时间戳转换为本地时间
+
 	blob_buf_init(&buf, 0);
 
-	/* timestamp */
-	current_time = time(NULL);
-	local_time = localtime(&current_time);
-  	sprintf(temp,"当前时间：%d年%d月%d日 %d:%d:%d", 
-    local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday, 
-    local_time->tm_hour, local_time->tm_min, local_time->tm_sec);
+	local_time = localtime(&g_current_time);
+	sprintf(temp,"当前时间：%d年%d月%d日 %d:%d:%d", 
+	local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday, 
+	local_time->tm_hour, local_time->tm_min, local_time->tm_sec);
 	blobmsg_add_string(&buf, "current time",temp);
-	sprintf(temp,"%ld",current_time);
+	sprintf(temp,"%ld",g_current_time);
 	blobmsg_add_string(&buf, "timestamp",temp);
 
 	/* 5G */
@@ -196,7 +336,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 	static struct blobmsg_policy channel_bitmap_policy[MAX_CHANNEL_NUM];
 	int i,total_band_num;
 	const char format[] = "{\"code\":%d,\"band\":%d,\"scan_time\":%d}";
-	const char *msgstr = "(unknown)";
+	char msgstr[100] = "(unknown)";
 	long bitmap_2G,bitmap_5G;
 
 	for (i = 0;i < MAX_CHANNEL_NUM;i++) {
@@ -256,6 +396,16 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 			printf("len %d\n",g_input.channel_num);
 			for (i = 0;i < g_input.channel_num;i++) {
 				printf("%d\r\n",blobmsg_get_u32(channel_bitmap_array[i]));
+				if(blobmsg_get_u32(channel_bitmap_array[i]) < 36 || blobmsg_get_u32(channel_bitmap_array[i]) > 144)
+				{
+						len = sizeof(*hreq) + sizeof(msgstr) + 1;
+						hreq = calloc(1, len);
+						if (!hreq) {
+							return UBUS_STATUS_UNKNOWN_ERROR;
+						}
+						sprintf(hreq->data,"(channel not in channel list)");
+						goto error;					
+				}
 				if (blobmsg_get_u32(channel_bitmap_array[i]) >= MAX_BAND_5G_CHANNEL_NUM && blobmsg_get_u32(channel_bitmap_array[i]) <= 144) {
 					if(blobmsg_get_u32(channel_bitmap_array[i])%4 != 0) {
 						len = sizeof(*hreq) + sizeof(msgstr) + 1;
@@ -279,7 +429,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 						goto error;
 					}
 
-				}
+				}  
 				g_input.channel_bitmap |= 1<< (blobmsg_get_u32(channel_bitmap_array[i])/4 - 9);
 			}
 			printf("input bitmap %d\r\n",g_input.channel_bitmap);
@@ -308,10 +458,11 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		pthread_mutex_lock(&g_mutex);
 		g_status = SCAN_BUSY;
 
-		// memcpy(&scan_message.input,&g_input,sizeof(struct user_input));
-		// strcpy(scan_message.message,"start scan");
+		memcpy(&scan_message.input,&g_input,sizeof(struct user_input));
+		strcpy(scan_message.message,"start scan");
+		scan_message.opcode=OPCODE_SCAN;
+		udp_send(&scan_message,NULL);
 
-		// udp_send(&scan_message,NULL);
 		sem_post(&g_semaphore);
 		pthread_mutex_unlock(&g_mutex);
 		
@@ -337,6 +488,30 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 error:
 	ubus_defer_request(ctx, req, &hreq->req);
 	hreq->timeout.cb = scan_reply;
+	uloop_timeout_set(&hreq->timeout, 1000);
+
+	return 0;
+}
+
+static int realtime_get(struct ubus_context *ctx, struct ubus_object *obj,
+		      struct ubus_request_data *req, const char *method,
+		      struct blob_attr *msg)
+{
+	struct realtime_get_request *hreq;
+	char format[100] = "{\"code\":%d,\"band\":%d,\"scan_time\":%d,\"status\":%d}";
+	const char *msgstr = "(error)";
+
+
+	size_t len = sizeof(*hreq) + sizeof(format) + strlen(obj->name) + strlen(msgstr) + 1;
+	hreq = calloc(1, len);
+	if (!hreq) {
+		return UBUS_STATUS_UNKNOWN_ERROR;
+	}
+	
+
+
+	ubus_defer_request(ctx, req, &hreq->req);
+	hreq->timeout.cb = realtime_get_reply;
 	uloop_timeout_set(&hreq->timeout, 1000);
 
 	return 0;
