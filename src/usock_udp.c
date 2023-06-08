@@ -119,7 +119,6 @@ void *udp_thread(void *arg)
                 printf("%d\r\n",server_buf.input.band);
                 printf("%ld\r\n",server_buf.input.channel_bitmap);
                 printf("%d\r\n",server_buf.input.channel_num);
-                printf("%d\r\n",server_buf.input.code);
                 printf("%d\r\n",server_buf.input.scan_time);
                 if (g_status == SCAN_IDLE || g_status == SCAN_NOT_START) {
                     printf("|||||||||");

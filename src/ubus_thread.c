@@ -53,7 +53,6 @@ struct realtime_get_request {
 	char data[];
 };
 static const struct blobmsg_policy scan_policy[] = {
-	[CODE] = { .name = "code", .type = BLOBMSG_TYPE_INT32 },
 	[BAND] = { .name = "band", .type = BLOBMSG_TYPE_INT32 },
 	[CHANNEL_BITMAP] = { .name = "channel_bitmap", .type = BLOBMSG_TYPE_ARRAY },
 	[SCAN_TIME] = { .name = "scan_time", .type = BLOBMSG_TYPE_INT32 },
@@ -305,78 +304,23 @@ static void get_reply(struct uloop_timeout *t)
 	char temp[512];
 	int i;
 
-	struct tm *local_time;  // 将时间戳转换为本地时间
 
 	blob_buf_init(&buf, 0);
+	/* find AP */
+	i = find_ap(g_device_list,g_device_list_len);
+	memcpy(g_device_list[i].channel_info,g_channel_info_5g,sizeof(g_channel_info_5g));
+	g_device_list[i].status = g_status;
+	g_device_list[i].input = g_input;
+	g_device_list[i].timestamp = g_current_time;
 
-	local_time = localtime(&g_current_time);
-	sprintf(temp,"当前时间：%d年%d月%d日 %d:%d:%d", 
-	local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday, 
-	local_time->tm_hour, local_time->tm_min, local_time->tm_sec);
-	blobmsg_add_string(&buf, "current time",temp);
-	sprintf(temp,"%ld",g_current_time);
-	blobmsg_add_string(&buf, "timestamp",temp);
-
-	/* 5G */
-	void * const BAND_5G_obj = blobmsg_open_table(&buf, NULL);
-	blobmsg_add_string(&buf, "band","5");
-
-	if (g_status == SCAN_BUSY) { 
-		blobmsg_add_string(&buf, "status","busy");
-		blobmsg_add_string(&buf, "status_code","1");
-	} else if (g_status == SCAN_IDLE) {
-		blobmsg_add_string(&buf, "status","idle");
-		blobmsg_add_string(&buf, "status_code","2");
-	} else if (g_status == SCAN_NOT_START) {
-		blobmsg_add_string(&buf, "status","not start");
-		blobmsg_add_string(&buf, "status_code","0");
+	/* scan list*/
+	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
+	
+	for (i = 0;i < g_device_list_len;i++) {
+		add_device_info_blobmsg(&buf,&g_device_list[i]);
 	}
 
-	void * const tbl_a = blobmsg_open_array(&buf, "score_list");
-	
-
-
-	for (i = 0; i < g_input.channel_num;i++) {
-		void * const obj = blobmsg_open_table(&buf, NULL);
-
-		sprintf(temp,"%d",g_channel_info_5g[i].channel);
-		blobmsg_add_string(&buf, "channel",temp);
-		
-		sprintf(temp,"%d",g_channel_info_5g[i].floornoise);
-		blobmsg_add_string(&buf, "floornoise", temp);
-
-		sprintf(temp,"%d",g_channel_info_5g[i].utilization);
-		blobmsg_add_string(&buf, "utilization", temp);
-
-		sprintf(temp,"%d",g_channel_info_5g[i].bw);
-		blobmsg_add_string(&buf, "bw", temp);
-		
-		sprintf(temp,"%d",g_channel_info_5g[i].obss_util);
-		blobmsg_add_string(&buf, "obss_util", temp);
-		
-		sprintf(temp,"%d",g_channel_info_5g[i].tx_util);
-		blobmsg_add_string(&buf, "tx_util", temp);
-
-		sprintf(temp,"%d",g_channel_info_5g[i].rx_util);
-		blobmsg_add_string(&buf, "rx_util", temp);
-
-		sprintf(temp,"%d",g_channel_info_5g[i].score);
-		blobmsg_add_string(&buf, "score", temp);
-
-		blobmsg_close_table(&buf, obj);
-	}
-	blobmsg_close_array(&buf, tbl_a);
-	
-	blobmsg_close_table(&buf, BAND_5G_obj);
-
-	/* 2G */
-	void * const BAND_2G_obj = blobmsg_open_table(&buf, NULL);
-
-	blobmsg_add_string(&buf, "band","2");
-	
-	blobmsg_close_table(&buf, BAND_2G_obj);
-
-	ubus_send_reply(ctx, &req->req, buf.head);
+	blobmsg_close_array(&buf, scan_list_obj);
 
 	if (pipe(fds) == -1) {
 		fprintf(stderr, "Failed to create pipe\n");
@@ -423,11 +367,11 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		if (!hreq) {
 			return UBUS_STATUS_UNKNOWN_ERROR;
 		}
-		sprintf(hreq->data,"(scanning)");
+		sprintf(hreq->data,"{\"code\":%d}",FAIL);
 		goto error;
 	}
 
-	if (tb[CODE] && tb[BAND] ) {
+	if (tb[BAND] ) {
 		printf("g_status %d \r\n",g_status);
 		if (blobmsg_get_u32(tb[BAND]) == 5 || blobmsg_get_u32(tb[BAND]) == 2) {
 
@@ -437,14 +381,13 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 			if (!hreq) {
 				return UBUS_STATUS_UNKNOWN_ERROR;
 			}
-			sprintf(hreq->data,"(band input error)");
+			sprintf(hreq->data,"{\"code\":%d}",FAIL);
 			goto error;
 		}
 
 		get_channel_info(&channel_info, blobmsg_get_u32(tb[BAND]));
 		execute_cmd("echo \"get_channel_info finish\" >> /root/log",NULL);
 		total_band_num = get_country_channel_bitmap(channel_info.bw,&bitmap_2G,&bitmap_5G,PLATFORM_5G);
-		g_input.code = blobmsg_get_u32(tb[CODE]);
 		g_input.band = blobmsg_get_u32(tb[BAND]);
 
 		if (tb[SCAN_TIME]) {
@@ -466,7 +409,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 						if (!hreq) {
 							return UBUS_STATUS_UNKNOWN_ERROR;
 						}
-						sprintf(hreq->data,"(channel not in channel list)");
+						sprintf(hreq->data,"{\"code\":%d}",FAIL);
 						goto error;					
 				}
 				if (blobmsg_get_u32(channel_bitmap_array[i]) >= MAX_BAND_5G_CHANNEL_NUM && blobmsg_get_u32(channel_bitmap_array[i]) <= 144) {
@@ -476,7 +419,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 						if (!hreq) {
 							return UBUS_STATUS_UNKNOWN_ERROR;
 						}
-						sprintf(hreq->data,"(channel not in channel list)");
+						sprintf(hreq->data,"{\"code\":%d}",FAIL);
 						goto error;
 					}
 
@@ -488,7 +431,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 						if (!hreq) {
 							return UBUS_STATUS_UNKNOWN_ERROR;
 						}
-						sprintf(hreq->data,"(channel not in channel list)");
+						sprintf(hreq->data,"{\"code\":%d}",FAIL);
 						goto error;
 					}
 
@@ -503,23 +446,23 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 				if (!hreq) {
 					return UBUS_STATUS_UNKNOWN_ERROR;
 				}
-				sprintf(hreq->data,"(channel not in channel list)");
+				sprintf(hreq->data,"{\"code\":%d}",FAIL);
 				goto error;
 			}
 		} else {
 			g_input.channel_bitmap = bitmap_5G;
 			g_input.channel_num = total_band_num;
 		}
-		printf("code : %d",g_input.code);
 		printf("band : %d",g_input.band);
 		len = sizeof(*hreq) + sizeof(format) + 1;
 		hreq = calloc(1, len);
 		if (!hreq) {
 			return UBUS_STATUS_UNKNOWN_ERROR;
 		}
-		sprintf(hreq->data,"{\"code\":%d,\"band\":%d,\"scan_time\":%d}",g_input.code,g_input.band,g_input.scan_time);	
+		sprintf(hreq->data,"{\"code\":%d,\"band\":%d,\"scan_time\":%d}",SUCCESS,g_input.band,g_input.scan_time);	
 		pthread_mutex_lock(&g_mutex);
 
+		memset(g_device_list,0,sizeof(g_device_list));
 		get_online_device(g_device_list,&g_device_list_len);
 		g_status = SCAN_BUSY;
 
@@ -537,7 +480,7 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		if (!hreq) {
 			return UBUS_STATUS_UNKNOWN_ERROR;
 		}
-		sprintf(hreq->data,"can not find band");
+		sprintf(hreq->data,"{\"code\":%d}",FAIL);
 		goto error;
 	}
 	

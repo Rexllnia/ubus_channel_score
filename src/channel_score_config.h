@@ -19,7 +19,6 @@
 #define PLATFORM_BOTH   0
 
 struct user_input {
-    int code;
     int band;
     long channel_bitmap;
     int channel_num;

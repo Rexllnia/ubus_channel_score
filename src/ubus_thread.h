@@ -33,7 +33,6 @@ struct device_info {
 };
 
 enum {
-    CODE,
 	BAND,
     CHANNEL_BITMAP,
     SCAN_TIME,
