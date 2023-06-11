@@ -339,7 +339,7 @@ int execute_cmd(char *cmd,char **rbuf)
     
     
     fread(*rbuf,sizeof(char),MAX_POPEN_BUFFER_SIZE,fp);
-    printf("%s\r\n",*rbuf);
+    // printf("%s\r\n",*rbuf);
     pclose(fp);
     return SUCCESS;
 }

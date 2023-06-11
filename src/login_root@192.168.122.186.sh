@@ -12,7 +12,7 @@ expect -c "
     spawn ssh -l $name $ipv4_addr -p$port
     expect {
         \"password:\" {set timeout 300; send \"$pass\r\"; exp_continue;}
-        \"~#\" {send \"opkg install $remote_file && $run_file\r\";}
+        \"~#\" {send \"ls\r\";}
     }
     interact
 " 

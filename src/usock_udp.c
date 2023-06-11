@@ -6,7 +6,9 @@ extern volatile int g_status;
 extern pthread_mutex_t g_mutex;
 extern struct user_input g_input;
 extern struct channel_info realtime_channel_info_5g[36];
-struct channel_info CPE_channel_info[2][36];
+
+
+
 
 int rlink_get_localip(const char *ifname,char *ip)
 {
@@ -68,18 +70,22 @@ void udp_send(struct udp_message *buf,char *dest_ip)
     close(sockfd);
 }
 
+void broacast_remote_get() {
+    struct udp_message message_buf;
+    message_buf.opcode = OPCODE_GET;
+    udp_send(&message_buf,NULL);
+}
+
 void *udp_thread(void *arg) 
 {
 
-    int i;
+    int i,pos;
     char cmd[1024];
     struct udp_message server_buf,ret_message;
 
     memset(&server_buf,0,sizeof(struct udp_message));
     rlink_get_localip("br-wan",g_local_ip);
     
-
-
 
 
     int server_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -127,20 +133,16 @@ void *udp_thread(void *arg)
                     g_status = SCAN_BUSY;
                     sem_post(&g_semaphore);
                     pthread_mutex_unlock(&g_mutex);
-                    strcpy(ret_message.message,"success");
-
-                
-                    udp_send(&ret_message,client_ip);
-        
-                    memset(&server_buf,0,sizeof(struct udp_message));
-                }                
+                } else {
+                    g_status = SCAN_TIMEOUT;
+                }              
             } else if (server_buf.opcode == OPCODE_GET) {
                 
             } else if (server_buf.opcode == OPCODE_REALTIME_GET) {
-                memcpy(ret_message.channel_info,realtime_channel_info_5g,MAX_BAND_5G_CHANNEL_NUM * sizeof(struct channel_info));
+                memcpy(ret_message.device.channel_info,realtime_channel_info_5g,MAX_BAND_5G_CHANNEL_NUM * sizeof(struct channel_info));
                 udp_send(&ret_message,client_ip);
             } else if (server_buf.opcode == OPCODE_GET_REPLY) {
-
+    
             }
 
 

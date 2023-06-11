@@ -37,9 +37,12 @@
 #define MIN_SCAN_TIME 15 
 #define MAX_SCAN_TIME 60
 #define ONE_BYTE 8
+#define EXPIRE_TIME 14
 
 int calculate_channel_score(struct channel_info *info);
 int change_channel(int channel);
+extern struct device_list g_finished_device_list;
+extern struct device_list g_device_list;
 extern struct channel_info g_channel_info_5g[36];
 struct channel_info realtime_channel_info_5g[36];
 extern struct user_input g_input;
@@ -210,11 +213,13 @@ void *scan_thread(void *arg)
 
     
     int i,j,score,len;
-    
+    struct channel_info current_channel_info;
     
     while (1) {
         sem_wait(&g_semaphore);
+        
         if (g_status == SCAN_BUSY) {
+            get_channel_info(&current_channel_info,PLATFORM_5G);
             memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
             for (j = 0,i = 0; i < sizeof(long) * ONE_BYTE; i++) {
                 if ((g_input.channel_bitmap& (1L << i)) != 0) {
@@ -232,12 +237,12 @@ void *scan_thread(void *arg)
                     j++;  
                 }
             }
-
+            
             /* timestamp */
             g_current_time = time(NULL);
+            change_channel(current_channel_info.channel);
+
             
-
-
             pthread_mutex_lock(&g_mutex);
             memcpy(g_channel_info_5g,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
             g_status = SCAN_IDLE;
@@ -254,6 +259,7 @@ int main(int argc, char **argv)
     g_input.scan_time = MIN_SCAN_TIME;
     g_status = SCAN_NOT_START;
 	g_input.channel_bitmap = 0;
+    get_online_device(&g_finished_device_list);
 
     pthread_mutex_init(&g_mutex, NULL);
 
@@ -317,14 +323,21 @@ int calculate_channel_score(struct channel_info *info)
     return (1 - N/20)*info->obss_util;
 }
 
+int timeout_func () 
+{
+    int i;
+    for (i = 0;i < EXPIRE_TIME;i++) {
+        broacast_remote_get();
 
+    }
+}
 
 #ifdef POPEN_CMD_ENABLE
 int change_channel(int channel) 
 {
     char cmd[MAX_POPEN_BUFFER_SIZE];
     printf("change to channel %d",channel);
-   sprintf(cmd,"dev_config update -m radio '{ \"radioList\": [ { \"radioIndex\": \"1\", \"type\":\"5G\", \"channel\":\"%d\" } ]}'",channel);
+    sprintf(cmd,"dev_config update -m radio '{ \"radioList\": [ { \"radioIndex\": \"1\", \"type\":\"5G\", \"channel\":\"%d\" } ]}'",channel);
     // sprintf(cmd,"iwpriv ra0 set channel=%d",channel);
     execute_cmd(cmd,NULL);
 

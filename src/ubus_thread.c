@@ -14,6 +14,7 @@
 
 #include "ubus_thread.h"
 #include "channel_score_config.h"
+#include "device_list.h"
 
 
 
@@ -28,8 +29,9 @@ static struct ubus_subscriber test_event;
 static struct blob_buf b;
 struct user_input g_input;
 
-struct device_info g_device_list[32];
-int g_device_list_len;
+struct device_list g_finished_device_list;
+struct device_list g_device_list;
+
 
 struct scan_request {
 	struct ubus_request_data req;
@@ -95,47 +97,8 @@ static void scan_reply(struct uloop_timeout *t)
 	req->fd = fds[1];
 	free(req);
 }
-static void get_online_device(struct device_info *device_list,int *list_len)
-{
-	char *rbuf;
 
-	int i;
 
-	json_object *rbuf_root;
-	json_object *list_all_obj;
-	json_object *list_pair_obj;
-	json_object *sn_obj,*role_obj;
-
-	execute_cmd("dev_sta get -m wds_list_all",&rbuf);
-
-	rbuf_root = json_tokener_parse(rbuf);
-	list_all_obj = json_object_object_get(rbuf_root,"list_all");
-	json_object *list_all_elem = json_object_array_get_idx(list_all_obj,0);
-	list_pair_obj = json_object_object_get(list_all_elem,"list_pair");
-
-	*list_len = json_object_array_length(list_pair_obj);
-
-	for (i = 0;i < json_object_array_length(list_pair_obj);i++) {
-		json_object *list_pair_elem;
-		list_pair_elem = json_object_array_get_idx(list_pair_obj,i);
-		sn_obj = json_object_object_get(list_pair_elem,"sn");
-		role_obj = json_object_object_get(list_pair_elem,"role");
-		strcpy(device_list[i].series_no,json_object_get_string(sn_obj));
-		strcpy(device_list[i].role,json_object_get_string(role_obj));
-	}
-
-	free(rbuf);
-	json_object_put(rbuf_root);
-}
-int find_ap(struct device_info *device_list,int list_len) 
-{
-	int i;
-	for (i = 0;i < list_len;i++) {
-		if (strcmp(device_list[i].role,"ap") == 0) {
-			return i;
-		}
-	}
-}
 static void realtime_get_reply(struct uloop_timeout *t)
 {
 	struct realtime_get_request *req = container_of(t, struct realtime_get_request, timeout);
@@ -145,20 +108,27 @@ static void realtime_get_reply(struct uloop_timeout *t)
 	char temp[512];
 	int i;
 
+	struct device_info device;
+
+	memset(&device,0,sizeof(struct device_info));
 	blob_buf_init(&buf, 0);
+	printf("%s\r\n",__func__);
 
 	/* find AP */
-	i = find_ap(g_device_list,g_device_list_len);
-	memcpy(g_device_list[i].channel_info,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
-	g_device_list[i].status = g_status;
-	g_device_list[i].input = g_input;
-	g_device_list[i].timestamp = time(NULL);
+	i = find_ap(&g_device_list);
+	printf("%s i = %d\r\n",__func__,i);
+	
+	memcpy(g_device_list.device[i].channel_info,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
+	g_device_list.device[i].timestamp = time(NULL);
+	g_device_list.device[i].input = g_input;
+	g_device_list.device[i].status = g_status;
+
 
 	/* scan list*/
 	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
 	
-	for (i = 0;i < g_device_list_len;i++) {
-		add_device_info_blobmsg(&buf,&g_device_list[i]);
+	for (i = 0;i < g_device_list.list_len;i++) {
+		add_device_info_blobmsg(&buf,&g_device_list.device[i]);
 	}
 
 	blobmsg_close_array(&buf, scan_list_obj);
@@ -200,8 +170,10 @@ static void add_score_list_blobmsg(struct blob_buf *buf,int channel_num,struct c
 }
 static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *device)
 {
-	
 	void * const device_obj = blobmsg_open_table(buf, NULL);
+
+	printf("%s  %s \r\n",__func__,device->series_no);
+	printf("%s  %s \r\n",__func__,device->role);
 	blobmsg_add_string(buf, "SN",device->series_no);
 	blobmsg_add_string(buf, "role",device->role);
 	
@@ -209,8 +181,8 @@ static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *dev
 	
 	
 	/* 5G */
-	void * const BAND_5G_obj = blobmsg_open_table(buf, NULL);
-	blobmsg_add_string(buf, "band","5");
+	void * const BAND_5G_obj = blobmsg_open_table(buf, "5G");
+	// blobmsg_add_string(buf, "band","5");
 
 	if (g_status == SCAN_BUSY) { 
 		blobmsg_add_string(buf, "status","busy");
@@ -223,22 +195,18 @@ static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *dev
 		blobmsg_add_string(buf, "status_code","0");
 	}
 
-	void *const bw20_table = blobmsg_open_table(buf, NULL);
-	blobmsg_add_string(buf,"bw","20");
+	void *const bw20_table = blobmsg_open_table(buf, "bw_20");
+	// blobmsg_add_string(buf,"bw","20");
 	add_score_list_blobmsg(buf,device->input.channel_num,device->channel_info);
 	// add_channel_info_blobmsg(buf,realtime_channel_info_5g,g_input.channel_num);
 	blobmsg_close_table(buf, bw20_table);
 
-	void *const bw40_table = blobmsg_open_table(buf, NULL);
-	blobmsg_add_string(buf,"bw","40");
-	// add_score_list_blobmsg(buf);
-	// add_channel_info_blobmsg(buf,realtime_channel_info_5g,g_input.channel_num);
+	void *const bw40_table = blobmsg_open_table(buf, "bw_40");
+
 	blobmsg_close_table(buf, bw40_table);
 
-	void *const bw80_table = blobmsg_open_table(buf, NULL);
-	blobmsg_add_string(buf,"bw","80");
-	// add_score_list_blobmsg(buf);
-	// add_channel_info_blobmsg(buf,realtime_channel_info_5g,g_input.channel_num);
+	void *const bw80_table = blobmsg_open_table(buf, "bw_80");
+
 	blobmsg_close_table(buf, bw80_table);
 	
 	blobmsg_close_table(buf, BAND_5G_obj);
@@ -300,28 +268,51 @@ static void get_reply(struct uloop_timeout *t)
 	struct get_request *req = container_of(t, struct get_request, timeout);
 	int fds[2];
 	static struct blob_buf buf;
-	
+	struct device_info *p;
 	char temp[512];
 	int i;
+	int code;
+
 
 
 	blob_buf_init(&buf, 0);
+	printf("%s\r\n",__func__);
+
+	
 	/* find AP */
-	i = find_ap(g_device_list,g_device_list_len);
-	memcpy(g_device_list[i].channel_info,g_channel_info_5g,sizeof(g_channel_info_5g));
-	g_device_list[i].status = g_status;
-	g_device_list[i].input = g_input;
-	g_device_list[i].timestamp = g_current_time;
+	i = find_ap(&g_finished_device_list);
+	printf("%s i = %d\r\n",__func__,i);
+	
+	memcpy(g_finished_device_list.device[i].channel_info,g_channel_info_5g,sizeof(g_channel_info_5g));
+	g_finished_device_list.device[i].timestamp = g_current_time;
+	g_finished_device_list.device[i].input = g_input;
+	g_finished_device_list.device[i].status = g_status;
+
+	if (g_status != SCAN_IDLE) {
+		goto error;
+	}
+
 
 	/* scan list*/
 	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
 	
-	for (i = 0;i < g_device_list_len;i++) {
-		add_device_info_blobmsg(&buf,&g_device_list[i]);
+	for (i = 0;i < g_finished_device_list.list_len;i++) {
+		add_device_info_blobmsg(&buf,&g_finished_device_list.device[i]);
 	}
 
 	blobmsg_close_array(&buf, scan_list_obj);
 
+	/* best channel*/
+	void * const best_channel_obj = blobmsg_open_array(&buf, "best_channel");
+	
+	
+	blobmsg_close_array(&buf, best_channel_obj);
+
+
+
+
+
+	ubus_send_reply(ctx, &req->req, buf.head);
 	if (pipe(fds) == -1) {
 		fprintf(stderr, "Failed to create pipe\n");
 		return;
@@ -330,7 +321,19 @@ static void get_reply(struct uloop_timeout *t)
 	ubus_request_set_fd(ctx, &req->req, fds[0]);
 	ubus_complete_deferred_request(ctx, &req->req, 0);
 	req->fd = fds[1];
-
+	
+	free(req);
+	return ;
+	
+error:
+	if (pipe(fds) == -1) {
+		fprintf(stderr, "Failed to create pipe\n");
+		return;
+	}
+    
+	ubus_request_set_fd(ctx, &req->req, fds[0]);
+	ubus_complete_deferred_request(ctx, &req->req, 0);
+	req->fd = fds[1];
 	
 	free(req);
 }
@@ -462,8 +465,8 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		sprintf(hreq->data,"{\"code\":%d,\"band\":%d,\"scan_time\":%d}",SUCCESS,g_input.band,g_input.scan_time);	
 		pthread_mutex_lock(&g_mutex);
 
-		memset(g_device_list,0,sizeof(g_device_list));
-		get_online_device(g_device_list,&g_device_list_len);
+		memset(&g_device_list,0,sizeof(g_device_list));
+		get_online_device(&g_device_list);
 		g_status = SCAN_BUSY;
 
 		memcpy(&scan_message.input,&g_input,sizeof(struct user_input));
@@ -483,10 +486,6 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		sprintf(hreq->data,"{\"code\":%d}",FAIL);
 		goto error;
 	}
-	
-
-    
-
 
 	ubus_defer_request(ctx, req, &hreq->req);
 	hreq->timeout.cb = scan_reply;
@@ -539,8 +538,6 @@ static int get(struct ubus_context *ctx, struct ubus_object *obj,
 		return UBUS_STATUS_UNKNOWN_ERROR;
 	}
 	
-
-
 	ubus_defer_request(ctx, req, &hreq->req);
 	hreq->timeout.cb = get_reply;
 	uloop_timeout_set(&hreq->timeout, 1000);

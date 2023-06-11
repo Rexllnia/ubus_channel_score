@@ -11,26 +11,18 @@
 #include "country_channel.h"
 #include "usock_udp.h"
 #include "channel_score_config.h"
+#include "device_list.h"
 
 #define SCAN_BUSY       1
 #define SCAN_IDLE       2
 #define SCAN_NOT_START  0
-
+#define SCAN_TIMEOUT  	3
 
 #define MAX_CHANNEL_NUM 200 
 
-#define SN_LEN 15
-#define ROLE_STRING_LEN 4
 
-struct device_info {
-	char series_no[SN_LEN];
-	char role[ROLE_STRING_LEN];
-	int status;
-	struct user_input input;
-	struct channel_info channel_info[36];
-	time_t timestamp;
-	
-};
+
+
 
 enum {
 	BAND,

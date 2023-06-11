@@ -18,6 +18,7 @@
 #define PLATFORM_2G     2
 #define PLATFORM_BOTH   0
 
+
 struct user_input {
     int band;
     long channel_bitmap;
@@ -35,6 +36,8 @@ struct channel_info {
     int rx_util;
     int score;
 };
+
+
 
 #endif
 

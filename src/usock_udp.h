@@ -21,6 +21,7 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include "channel_score_config.h"
+#include "device_list.h"
 
 #define SCAN_BUSY       1
 #define SCAN_IDLE       2
@@ -37,12 +38,12 @@
 
 struct udp_message {
     int opcode;
-    int status;
     char message[MAX_MESSAGE_LEN];
     struct user_input input;
-    struct channel_info channel_info[36];
+    struct device_info device;
 };
 
+void broacast_remote_get();
 void udp_send(struct udp_message *buf,char *dest_ip);
 void *udp_thread(void *arg);
 
