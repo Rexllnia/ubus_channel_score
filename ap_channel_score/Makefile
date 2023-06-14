@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
  
-PKG_NAME:=channel_score
+PKG_NAME:=ap_channel_score
 PKG_RELEASE:=1.0
  
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
@@ -12,7 +12,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/$(PKG_NAME)
 	SECTION:=utils
 	CATEGORY:=Milesight
-	TITLE:=channel_score utility
+	TITLE:=ap_channel_score utility
 	DEPENDS:=+libuci +libubus +libubox +libpthread +libjson-c
 endef
  
@@ -39,9 +39,9 @@ endef
  
 define Package/$(PKG_NAME)/install	
 	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/channel_score.init $(1)/etc/init.d/channel_score
+	$(INSTALL_BIN) ./files/ap_channel_score.init $(1)/etc/init.d/ap_channel_score
 	$(INSTALL_DIR) $(1)/etc
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/channel_score $(1)/etc/channel_score
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ap_channel_score $(1)/etc/ap_channel_score
 endef
  
 

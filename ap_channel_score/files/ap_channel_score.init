@@ -2,7 +2,7 @@
 START=99
 SERVICE_USE_PID=1
 USE_PROCD=1
-_BIN=/bin/channel_score
+_BIN=/bin/ap_channel_score
  
 #. /lib/functions.sh
  
