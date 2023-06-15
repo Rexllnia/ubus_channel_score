@@ -60,6 +60,7 @@ int main(int argc, char **argv)
 
         return 0;
     }
+    
     if ((pthread_create(&pid3, NULL, tipc_get_msg_thread, NULL)) != 0) {
 
         return 0;

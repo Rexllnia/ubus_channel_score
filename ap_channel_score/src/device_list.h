@@ -26,6 +26,8 @@ struct device_info {
 	int status;
 	struct user_input input;
 	struct channel_info channel_info[36];
+	struct channel_info bw40_channel[18];
+	struct channel_info bw80_channel[9];
 	time_t timestamp;
 };
 struct device_list {

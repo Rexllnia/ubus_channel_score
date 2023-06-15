@@ -47,7 +47,7 @@ static int realtime_get(struct ubus_context *ctx, struct ubus_object *obj,
 		      struct blob_attr *msg);
 static void add_channel_info_blobmsg(struct blob_buf *buf,struct channel_info *channel_info,int channel_num);
 static void add_timestamp_blobmsg(struct blob_buf *buf,time_t *timestamp);
-static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *device);
+static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *device,int is_real_time);
 static void add_score_list_blobmsg(struct blob_buf *buf,int channel_num,struct channel_info *channel_info_list);
 static void add_channel_score_blobmsg(struct blob_buf *buf, struct channel_info *channel_info);
 #endif

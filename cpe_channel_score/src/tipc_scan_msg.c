@@ -154,7 +154,6 @@ void *tipc_scan_msg_thread()
 		if (0 >= recvfrom(sd, &inbuf, sizeof(struct user_input), 0,
 						(struct sockaddr *)&client_addr, &alen)) {
 			perror("Server: unexpected message");
-
 		}
 
 		printf("Server: Message received: %ld !\n", inbuf.channel_bitmap);

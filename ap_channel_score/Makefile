@@ -40,8 +40,11 @@ endef
 define Package/$(PKG_NAME)/install	
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/ap_channel_score.init $(1)/etc/init.d/ap_channel_score
+	$(INSTALL_DIR) $(1)/usr/local/lua/dev_sta/
+	$(INSTALL_BIN) ./files/channel_score.lua $(1)/usr/local/lua/dev_sta/channel_score.lua
 	$(INSTALL_DIR) $(1)/etc
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ap_channel_score $(1)/etc/ap_channel_score
+	
 endef
  
 

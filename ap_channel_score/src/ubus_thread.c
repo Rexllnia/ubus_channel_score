@@ -14,8 +14,11 @@
 
 #include "ubus_thread.h"
 #include "channel_score_config.h"
+#include "composite_score.h"
 #include "device_list.h"
+#include <stdbool.h>
 #include <stdio.h>
+#include <math.h> 
 
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
@@ -79,6 +82,7 @@ static struct ubus_object channel_score_object = {
 
 extern int  get_channel_info(struct channel_info *info,int band);
 extern double calculate_channel_score(struct channel_info *info);
+extern double calculate_N(struct channel_info *info);
 
 int send_remote_scan_msg(struct device_list *list,int wait_sec) 
 {
@@ -190,7 +194,7 @@ static void realtime_get_reply(struct uloop_timeout *t)
 	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
 	
 	for (i = 0;i < g_device_list.list_len;i++) {
-		add_device_info_blobmsg(&buf,&g_device_list.device[i]);
+		add_device_info_blobmsg(&buf,&g_device_list.device[i],true);
 	}
 
 	blobmsg_close_array(&buf, scan_list_obj);
@@ -231,7 +235,54 @@ static void add_score_list_blobmsg(struct blob_buf *buf,int channel_num,struct c
 	blobmsg_close_array(buf, score_list);
 
 }
-static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *device)
+static void add_bw80_blobmsg(struct blob_buf *buf,struct device_info *device) 
+{
+	int j;
+	void *const bw80_table = blobmsg_open_table(buf, "bw_80");
+	printf("line : %d fun : %s \r\n",__LINE__,__func__);
+	for ( j = 0;j < g_input.channel_num / 4;j++) {
+		device->bw80_channel[j] = device->channel_info[4*j];
+		printf("line : %d fun : %s \r\n",__LINE__,__func__);
+		device->bw80_channel[j].floornoise =MAX(MAX(MAX(device->channel_info[4*j].floornoise,
+												device->channel_info[4*j+1].floornoise), 
+												device->channel_info[4*j+2].floornoise),
+												device->channel_info[4*j+3].floornoise);
+		printf("line : %d fun : %s \r\n",__LINE__,__func__);
+		device->bw80_channel[j].score = ((double)1 - calculate_N(&(device->bw80_channel[j])) / 20) * 
+								(double)((double)1 - (double)(device->channel_info[4*j].obss_util
+								+ device->channel_info[4*j+1].obss_util
+								+ device->channel_info[4*j+2].obss_util
+								+ device->channel_info[4*j+3].obss_util)
+								/ (95 * BW_80 / 20)) * 1200 * 0.75;
+	}
+	printf("line : %d fun : %s \r\n",__LINE__,__func__);
+	add_score_list_blobmsg(buf,g_input.channel_num / 4,device->bw80_channel);
+	printf("line : %d fun : %s \r\n",__LINE__,__func__);
+	blobmsg_close_table(buf, bw80_table);
+}
+static void add_bw40_blobmsg(struct blob_buf *buf,struct device_info *device) 
+{
+	void *const bw40_table = blobmsg_open_table(buf, "bw_40");
+	
+	int j;
+
+	for ( j = 0;j < g_input.channel_num / 2;j++) {
+		printf("line : %d fun : %s \r\n",__LINE__,__func__);
+		device->bw40_channel[j] = device->channel_info[2*j];
+		printf("line : %d fun : %s \r\n",__LINE__,__func__);
+		device->bw40_channel[j].floornoise = MAX(device->channel_info[2*j].floornoise,device->channel_info[2*j+1].floornoise);
+		
+		device->bw40_channel[j].score = ((double)1-calculate_N(&(device->bw40_channel[j]))/20) * 
+										(double)((double)1 -(double)(device->channel_info[2*j].obss_util + 
+										device->channel_info[2*j+1].obss_util ) / (95 * BW_40/20)) * 600 * 0.75;
+	}
+	printf("line : %d fun : %s \r\n",__LINE__,__func__);
+	add_score_list_blobmsg(buf,g_input.channel_num / 2,device->bw40_channel);
+	printf("line : %d fun : %s \r\n",__LINE__,__func__);
+	blobmsg_close_table(buf, bw40_table);
+}
+
+static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *device,int is_real_time)
 {
 	void * const device_obj = blobmsg_open_table(buf, NULL);
 
@@ -264,24 +315,14 @@ static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *dev
 	// add_channel_info_blobmsg(buf,realtime_channel_info_5g,g_input.channel_num);
 	blobmsg_close_table(buf, bw20_table);
 
-	void *const bw40_table = blobmsg_open_table(buf, "bw_40");
-	struct channel_info bw40_channel[18];
-	int j;
-	for ( j = 0;j < g_input.channel_num / 2;j++) {
-		bw40_channel[j] = device->channel_info[2*j];
-		printf("bw40 channel %d \r\n",bw40_channel[j].channel); 
-		
-		bw40_channel[j].floornoise = MAX(device->channel_info[2*j].floornoise,device->channel_info[2*j+1].floornoise);
-		bw40_channel[j].score = MAX(device->channel_info[2*j].score,device->channel_info[2*j+1].score);
+	if (is_real_time == false) {
+		printf("line : %d fun : %s \r\n",__LINE__,__func__);
+		add_bw40_blobmsg(buf,device);
+		add_bw80_blobmsg(buf,device);
+		printf("line : %d fun : %s \r\n",__LINE__,__func__);
 	}
 
-	add_score_list_blobmsg(buf,g_input.channel_num / 2,bw40_channel);
 
-	blobmsg_close_table(buf, bw40_table);
-
-	void *const bw80_table = blobmsg_open_table(buf, "bw_80");
-
-	blobmsg_close_table(buf, bw80_table);
 	
 	blobmsg_close_table(buf, BAND_5G_obj);
 	blobmsg_close_table(buf, device_obj);
@@ -337,6 +378,80 @@ static void add_channel_info_blobmsg(struct blob_buf *buf,struct channel_info *c
 		blobmsg_close_table(buf, obj);
 	}
 }
+void add_bw40_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list) 
+{
+	void *const bw40_table = blobmsg_open_table(buf, "bw_40");
+	int best_channel_ptr;
+	struct channel_info bw40_channel[18];
+
+	int j,i;
+	double channel_avg_score[36];
+	char temp[100];
+	struct device_info *p;
+
+	memset(channel_avg_score,0,36);
+
+	for (j = 0;j < g_input.channel_num / 2; j++) {
+		list_for_each_device(p, i, list) {
+			channel_avg_score[j] += p->bw40_channel[j].score;
+		}
+		channel_avg_score[j] /= (list->list_len);
+	}
+
+	
+
+	best_channel_ptr = 0;
+	for (i = 0 ;i < g_input.channel_num / 2;i++) {
+		if (channel_avg_score[best_channel_ptr] < channel_avg_score[i]) {
+			best_channel_ptr = i;
+		}
+	}
+
+	sprintf(temp,"%f",channel_avg_score[best_channel_ptr]);
+	blobmsg_add_string(buf,"score",temp);
+
+	sprintf(temp,"%d",g_channel_info_5g[best_channel_ptr].channel);
+	blobmsg_add_string(buf,"channel",temp);
+
+	blobmsg_close_table(buf, bw40_table);
+}
+void add_bw80_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list)
+{
+	void *const bw80_table = blobmsg_open_table(buf, "bw_80");
+	int best_channel_ptr;
+	struct channel_info bw80_channel[9];
+
+	int j,i;
+	double channel_avg_score[36];
+	char temp[100];
+	struct device_info *p;
+
+	memset(channel_avg_score,0,36);
+
+	for (j = 0;j < g_input.channel_num / 4; j++) {
+		list_for_each_device(p, i, list) {
+			channel_avg_score[j] += p->bw80_channel[j].score;
+		}
+		channel_avg_score[j] /= (list->list_len);
+	}
+
+	
+
+	best_channel_ptr = 0;
+	for (i = 0 ;i < g_input.channel_num / 4;i++) {
+		if (channel_avg_score[best_channel_ptr] < channel_avg_score[i]) {
+			best_channel_ptr = i;
+		}
+	}
+
+	sprintf(temp,"%f",channel_avg_score[best_channel_ptr]);
+	blobmsg_add_string(buf,"score",temp);
+
+	sprintf(temp,"%d",g_channel_info_5g[best_channel_ptr].channel);
+	blobmsg_add_string(buf,"channel",temp);
+
+	blobmsg_close_table(buf, bw80_table);
+}
 static void get_reply(struct uloop_timeout *t)
 {
 	struct get_request *req = container_of(t, struct get_request, timeout);
@@ -346,8 +461,6 @@ static void get_reply(struct uloop_timeout *t)
 	char temp[512];
 	int i;
 	int code;
-
-
 
 	blob_buf_init(&buf, 0);
 	printf("%s\r\n",__func__);
@@ -389,16 +502,18 @@ static void get_reply(struct uloop_timeout *t)
 	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
 	
 	for (i = 0;i < g_finished_device_list.list_len;i++) {
-		add_device_info_blobmsg(&buf,&g_finished_device_list.device[i]);
+		add_device_info_blobmsg(&buf,&g_finished_device_list.device[i],false);
 	}
 
 	blobmsg_close_array(&buf, scan_list_obj);
 
 	/* best channel*/
-	void * const best_channel_obj = blobmsg_open_array(&buf, "best_channel");
-	
-	
-	blobmsg_close_array(&buf, best_channel_obj);
+	void * const best_channel_obj = blobmsg_open_table(&buf, "best_channel");
+
+	add_bw40_best_channel_blobmsg(&buf,&g_finished_device_list);
+	add_bw80_best_channel_blobmsg(&buf,&g_finished_device_list);
+
+	blobmsg_close_table(&buf, best_channel_obj);
 
 	ubus_send_reply(ctx, &req->req, buf.head);
 	if (pipe(fds) == -1) {
@@ -463,16 +578,19 @@ scan_busy:
 }
 
 int channel_check(int channel) {
+
 	if(channel < 36 || channel > 181)
 	{
 		return FAIL;				
 	}
+
 	if (channel >= MAX_BAND_5G_CHANNEL_NUM && channel <= 144) {
 		if(channel % 4 != 0) {
 			return FAIL;
 		}
 
-	} 
+	}
+
 	if (channel >= 149 && channel <= 181) {
 		if ((channel - 1) % 4 != 0) {
 
@@ -482,6 +600,7 @@ int channel_check(int channel) {
 
 	return SUCCESS;
 }
+
 static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		      struct ubus_request_data *req, const char *method,
 		      struct blob_attr *msg)
@@ -633,14 +752,13 @@ static int realtime_get(struct ubus_context *ctx, struct ubus_object *obj,
 		return UBUS_STATUS_UNKNOWN_ERROR;
 	}
 	
-
-
 	ubus_defer_request(ctx, req, &hreq->req);
 	hreq->timeout.cb = realtime_get_reply;
 	uloop_timeout_set(&hreq->timeout, 1000);
 
 	return 0;
 }
+
 static int get(struct ubus_context *ctx, struct ubus_object *obj,
 		      struct ubus_request_data *req, const char *method,
 		      struct blob_attr *msg)
@@ -648,7 +766,6 @@ static int get(struct ubus_context *ctx, struct ubus_object *obj,
 	struct get_request *hreq;
 	char format[100];
 	const char *msgstr = "(error)";
-
 
 	size_t len = sizeof(*hreq) + sizeof(format) + strlen(obj->name) + strlen(msgstr) + 1;
 	hreq = calloc(1, len);
@@ -662,6 +779,7 @@ static int get(struct ubus_context *ctx, struct ubus_object *obj,
 
 	return 0;
 }
+
 
 
 static void server_main(void)

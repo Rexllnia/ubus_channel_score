@@ -28,6 +28,7 @@
 #include <sys/mman.h>
 #include <libubus.h>
 #include <json-c/json.h>
+#include "composite_score.h"
 #include "device_list.h"
 #include "ubus_thread.h"
 #include "lib_unifyframe.h"
@@ -44,6 +45,7 @@ int device_list_compare(struct device_list *src_list,struct device_list *dest_li
 int timeout_func();
 int get_channel_info(struct channel_info *info,int band);
 double calculate_channel_score(struct channel_info *info);
+double calculate_N(struct channel_info *info) ;
 int change_channel(int channel);
 
 extern struct device_list g_finished_device_list;
@@ -267,9 +269,6 @@ void *scan_thread(void *arg)
                 g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
                 pthread_mutex_unlock(&g_mutex);
             }
- 
-
-
         }
     }
 }
@@ -311,6 +310,40 @@ int main(int argc, char **argv)
     }
 	return 0;
 }
+double calculate_N(struct channel_info *info) 
+{
+    double N;
+
+    if (info->floornoise <= -87) {
+        N = 0;
+    } else if ( -87 < info->floornoise && info->floornoise <= -85) {
+        N = 1;
+    } else if (-85 < info->floornoise && info->floornoise <= -82) {
+        N = 2;
+    } else if (-82 < info->floornoise && info->floornoise <= -80) {
+        N = 2.8;
+    } else if (-80 < info->floornoise && info->floornoise <= -76) {
+        N = 4;
+    } else if (-76 < info->floornoise && info->floornoise <= -71) {
+        N = 4.8;
+    } else if (-71 < info->floornoise && info->floornoise <= -69) {
+        N = 5.2;
+    } else if (-69 < info->floornoise && info->floornoise <= -66) {
+        N = 6.4;
+    } else if (-66 < info->floornoise && info->floornoise <= -62) {
+        N = 7.6;
+    } else if (-62 < info->floornoise && info->floornoise <= -60) {
+        N = 8.2;
+    } else if (-60 < info->floornoise && info->floornoise <= -56) {
+        N = 8.8;
+    } else if (-56 < info->floornoise && info->floornoise <= -52) {
+        N = 9.4;
+    } else if (-52 < info->floornoise ) {
+        N = 10;
+    } 
+    
+    return N;
+}
 double calculate_channel_score(struct channel_info *info) 
 {
     double N;
@@ -342,7 +375,8 @@ double calculate_channel_score(struct channel_info *info)
     } else if (-52 < info->floornoise ) {
         N = 10;
     } 
-    return ((double)1 - N/20)*(double)(100 - info->obss_util)/100;
+
+    return ((double)1 - N/20)*(double)((double)1 - (double)info->obss_util / 95) * 300 * 0.75;
 }
 
 int device_list_compare(struct device_list *src_list,struct device_list *dest_list) {
@@ -365,7 +399,7 @@ int timeout_func()
     
     int i,j;
     
-    for (j = 0; j < 10;j++) {
+    for (j = 0; j < 30;j++) {
         printf("wait %d\r\n",j);
         sleep(1);
         if (get_remote_channel_list(&g_device_list,2) == SUCCESS) {
