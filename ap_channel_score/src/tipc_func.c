@@ -138,7 +138,6 @@ int tipc_msg_send_receive(__u32 name_type, __u32 name_instance,void *buf,ssize_t
 	server_addr.addr.name.name.instance = name_instance;
 	server_addr.addr.name.domain = 0;
 
-    
 
 	if (0 > sendto(sd, buf,size, 0,
 	                (struct sockaddr*)&server_addr, sizeof(server_addr))) {

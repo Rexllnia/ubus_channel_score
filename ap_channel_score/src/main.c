@@ -265,6 +265,8 @@ void *scan_thread(void *arg)
                 printf( "line : %d func %s g_status : %d,",__LINE__,__func__,g_status);
                 pthread_mutex_lock(&g_mutex);
                 memcpy(g_channel_info_5g,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
+                /* 将CPE端的数据存入完成列表，此时AP端的数据还在g_channel_info中 */
+                memcpy(&g_finished_device_list,&g_device_list,sizeof(struct device_list));
                 g_status = SCAN_IDLE;
                 g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
                 pthread_mutex_unlock(&g_mutex);

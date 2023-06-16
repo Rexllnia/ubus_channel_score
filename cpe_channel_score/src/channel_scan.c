@@ -260,7 +260,7 @@ double calculate_channel_score(struct channel_info *info)
     } else if (-52 < info->floornoise ) {
         N = 10;
     } 
-    return ((double)1 - N/20)*(double)(100 - info->obss_util)/100;
+    return ((double)1 - N/20)*(double)((double)1 - (double)info->obss_util / 95) * 300 * 0.75;
 }
 
 

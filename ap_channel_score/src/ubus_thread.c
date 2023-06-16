@@ -487,16 +487,8 @@ static void get_reply(struct uloop_timeout *t)
 	}
 
 
-	int instant = 0;
 	
-	list_for_each_device(p,i,&g_finished_device_list) {
-		if (strcmp(p->role,"ap") != 0) {	
-			instant = rg_mist_mac_2_nodeadd(p->mac);
-			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
-			tipc_msg_send_receive(SERVER_TYPE_GET,instant,p->channel_info,36 * sizeof(struct channel_info),4);
-			printf("test : %d\r\n",p->channel_info[0].floornoise);
-		}	
-	}
+	// get_remote_channel_list(&g_finished_device_list, 4);
 
 	/* scan list*/
 	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
