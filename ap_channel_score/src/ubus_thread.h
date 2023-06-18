@@ -9,15 +9,11 @@
 #include <libubox/blobmsg_json.h>
 #include "libubus.h"
 #include "country_channel.h"
-#include "usock_udp.h"
 #include "channel_score_config.h"
 #include "device_list.h"
 #include "tipc_func.h"
 
-#define SCAN_BUSY       1
-#define SCAN_IDLE       2
-#define SCAN_NOT_START  0
-#define SCAN_TIMEOUT  	3
+
 
 #define MAX_CHANNEL_NUM 200 
 

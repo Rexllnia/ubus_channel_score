@@ -1,10 +1,24 @@
 
 #include "tipc_func.h"
 #include "channel_score_config.h"
-
+#include <stdio.h>
 
 extern struct user_input g_input;
+char rg_misc_read_file(char *name,char *buf,char len) {
+    int fd;
 
+    memset(buf,0,len);
+    fd = open(name, O_RDONLY);
+    if (fd > 0) {
+        read(fd,buf,len);
+        close(fd);
+        if (buf[strlen(buf) - 1] == '\n') {
+            buf[strlen(buf) - 1] = 0;
+        }
+        return SUCCESS;
+    }
+    return FAIL;
+}
 int rg_mist_mac_2_nodeadd(unsigned char *mac_src)
 {
     unsigned int mac[6];
@@ -82,6 +96,7 @@ int wait_for_server(__u32 name_type, __u32 name_instance, int wait)
 	}
 	close(sd);
 }
+
 int tipc_msg_send(__u32 name_type, __u32 name_instance,void *buf,ssize_t size, int wait)
 {
 	int sd;
@@ -154,3 +169,69 @@ int tipc_msg_send_receive(__u32 name_type, __u32 name_instance,void *buf,ssize_t
 	printf("\n****** TIPC client hello program finished ******\n");
 	
 }
+
+typedef struct tipc_recv_packet_head {
+	unsigned char type;
+	unsigned int len ;
+	unsigned int instant;
+}tipc_recv_packet_head_t;
+
+void *tipc_receive_thread(void * argv)
+{
+	int sd;
+    tipc_recv_packet_head_t head;  //接收缓冲区头
+
+	struct sockaddr_tipc server_addr;
+	struct sockaddr_tipc client_addr;
+	socklen_t alen = sizeof(client_addr);
+
+    unsigned int instant = 0;
+    unsigned char mac[20];
+
+    struct channel_info *pkt;
+    unsigned int data_len;
+
+	printf("****** TIPC server hello world program started ******\n\n");
+
+    memset(mac,0,sizeof(mac));
+    rg_misc_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
+
+    instant = rg_mist_mac_2_nodeadd(mac);
+
+	server_addr.family = AF_TIPC;
+	server_addr.addrtype = TIPC_ADDR_NAMESEQ;
+	server_addr.addr.nameseq.type = SERVER_TYPE_GET;
+	server_addr.addr.nameseq.lower = instant;
+	server_addr.addr.nameseq.upper = instant;
+	server_addr.scope = TIPC_ZONE_SCOPE;
+
+	sd = socket(AF_TIPC, SOCK_RDM, 0);
+
+
+	if (0 != bind(sd, (struct sockaddr *)&server_addr, sizeof(server_addr))) {
+		printf("Server: failed to bind port name\n");
+	}
+
+	while (1) {	
+		if (recvfrom(sd, &head, sizeof(tipc_recv_packet_head_t), 0,
+						(struct sockaddr *)&client_addr, &alen) != sizeof(tipc_recv_packet_head_t)) {
+			perror("Server: unexpected message");
+			continue;
+		}
+
+		data_len = head.len;
+		pkt = (struct channel_info *)malloc(data_len);
+
+		if (recvfrom(sd, pkt, data_len, 0,
+						(struct sockaddr *)&client_addr, &alen) != data_len) {
+			perror("Server: unexpected message");
+			continue;
+		} 
+		
+		printf("pkt_info %d",pkt->score);
+	}
+
+    close(sd);
+    return 0;
+}
+

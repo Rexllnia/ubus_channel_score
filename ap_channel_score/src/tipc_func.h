@@ -16,6 +16,7 @@
 #define SERVER_INST  17
 #define BUF_SIZE 40
 
+void *tipc_receive_thread(void * argv);
 int rg_mist_mac_2_nodeadd(unsigned char *mac_src);
 int tipc_msg_send(__u32 name_type, __u32 name_instance,void *buf,ssize_t size, int wait);
 int tipc_msg_send_receive(__u32 name_type, __u32 name_instance,void *buf,ssize_t size, int wait_sec);

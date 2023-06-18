@@ -9,6 +9,7 @@
 
 #define MAX_POPEN_BUFFER_SIZE   4096
 
+#define P2P
 
 #define FAIL       -1
 #define SUCCESS    0

@@ -33,6 +33,7 @@
 #include "ubus_thread.h"
 #include "lib_unifyframe.h"
 #include "channel_score_config.h"
+#include "tipc_scan_msg.h"
 
 #define PLATFORM_5G_ENABLE
 #define BRIDGE_PLATFORM
@@ -48,9 +49,10 @@ double calculate_channel_score(struct channel_info *info);
 double calculate_N(struct channel_info *info) ;
 int change_channel(int channel);
 
+extern unsigned char g_mode;
 extern struct device_list g_finished_device_list;
 extern struct device_list g_device_list;
-extern struct channel_info g_channel_info_5g[36];
+struct channel_info g_channel_info_5g[MAX_BAND_5G_CHANNEL_NUM];
 struct channel_info realtime_channel_info_5g[36];
 extern struct user_input g_input;
 volatile int g_status,g_scan_time;
@@ -183,11 +185,11 @@ void channel_scan(struct channel_info *input,int scan_time)
 
     for (i = 0 ;i < scan_time ;i++) {
         sleep(1);
-        memset(&g_device_list,0,sizeof(g_device_list));
-        get_online_device(&g_device_list);
-        printf(" compare %d \r\n",device_list_compare(&g_finished_device_list,&g_device_list));
+
         get_channel_info(&info[i],PLATFORM_5G);
+        debug("current channel %d",info[i].channel);
     }
+    
     fp = fopen("./channel_info","a+");
     fprintf(fp,"\r\n********channel %d ***********\r\n",info[0].channel);
     fprintf(fp,"bw %d\r\n",input->bw=info[0].bw);
@@ -214,7 +216,8 @@ void channel_scan(struct channel_info *input,int scan_time)
     
     fprintf(fp,"*******************************************************\r\n");
     fclose(fp);
-    printf("g_status %d \r\n",g_status);
+
+    debug("g_status %d",g_status);
 
 }
     
@@ -227,23 +230,28 @@ void *scan_thread(void *arg)
     double score;
     struct channel_info current_channel_info;
     
+    
+
     while (1) {
         sem_wait(&g_semaphore);
         
         if (g_status == SCAN_BUSY) {
             get_channel_info(&current_channel_info,PLATFORM_5G);
+            get_online_device(&g_device_list);
             memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
             for (j = 0,i = 0; i < sizeof(long) * ONE_BYTE; i++) {
                 if ((g_input.channel_bitmap& (1L << i)) != 0) {
                     
                     realtime_channel_info_5g[j].channel = bitmap_to_channel(i);
-                    printf("change to channel %d >>>>>\n",realtime_channel_info_5g[j].channel);
+
+                    debug("change to channel : %d",realtime_channel_info_5g[j].channel);
                     
                     change_channel(realtime_channel_info_5g[j].channel);
 
                     channel_scan(&realtime_channel_info_5g[j],g_input.scan_time);
                     sleep(1);
-                    printf("%ld\r\n",g_input.channel_bitmap);
+
+                    debug("g_input.channel_bitmap : %ld",g_input.channel_bitmap);
                     realtime_channel_info_5g[j].score = calculate_channel_score(&realtime_channel_info_5g[j]);
                     printf("score %f\r\n",realtime_channel_info_5g[j].score);
                     printf("------------------\r\n");
@@ -266,50 +274,207 @@ void *scan_thread(void *arg)
                 pthread_mutex_lock(&g_mutex);
                 memcpy(g_channel_info_5g,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
                 /* 将CPE端的数据存入完成列表，此时AP端的数据还在g_channel_info中 */
+                debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
                 memcpy(&g_finished_device_list,&g_device_list,sizeof(struct device_list));
+                debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
                 g_status = SCAN_IDLE;
                 g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
                 pthread_mutex_unlock(&g_mutex);
             }
+
         }
     }
 }
 
-int main(int argc, char **argv)
+void *scan_func() 
 {
 
+    char *json_str;
+
+    
+    int i,j,len;
+    double score;
+    struct channel_info current_channel_info;
+    
+    
+    while (1) {
+        sem_wait(&g_semaphore);
+        
+        if (g_status == SCAN_BUSY) {
+            get_channel_info(&current_channel_info,PLATFORM_5G);
+            memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
+            for (j = 0,i = 0; i < sizeof(long) * ONE_BYTE; i++) {
+                if ((g_input.channel_bitmap& (1L << i)) != 0) {
+                    
+                    realtime_channel_info_5g[j].channel = bitmap_to_channel(i);
+                    debug("change channel to %d ",realtime_channel_info_5g[j].channel);
+                    
+                    change_channel(realtime_channel_info_5g[j].channel);
+
+                    channel_scan(&realtime_channel_info_5g[j],g_input.scan_time);
+                    sleep(1);
+                    printf("%ld\r\n",g_input.channel_bitmap);
+                    realtime_channel_info_5g[j].score = calculate_channel_score(&realtime_channel_info_5g[j]);
+                    printf("------------------\r\n");
+                    j++;  
+                }
+
+                if (g_status == SCAN_TIMEOUT) {
+                    goto timeout;
+                }
+            }
+            
+            /* timestamp */
+            g_current_time = time(NULL);
+            change_channel(current_channel_info.channel);
+
+            
+            pthread_mutex_lock(&g_mutex);
+            
+            memcpy(g_channel_info_5g,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
+            memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
+            g_status = SCAN_IDLE;
+            g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
+
+            pthread_mutex_unlock(&g_mutex);
+
+        }
+timeout:
+    if (g_status == SCAN_TIMEOUT) {
+            change_channel(current_channel_info.channel);
+            pthread_mutex_lock(&g_mutex);
+            g_status = SCAN_IDLE;
+            g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
+            memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
+            pthread_mutex_unlock(&g_mutex);
+        }
+    }
+}
+
+void get_wds_state () {
+    char *rbuf;
+	json_object *rbuf_root;
+    json_object *role_obj;
+
+    char role[4];
+
+    execute_cmd("dev_sta get -m wds_status", &rbuf);
+    rbuf_root = json_tokener_parse(rbuf);
+
+    role_obj = json_object_object_get(rbuf_root,"role");
+
+    if (strcmp(json_object_get_string(role_obj),"cpe") == 0) {
+        g_mode = CPE_MODE;
+    } else if (strcmp(json_object_get_string(role_obj),"ap") == 0) {
+        g_mode = AP_MODE;
+    }
+
+    free(rbuf);
+    debug("g_mode %d",g_mode);
+    
+    
+
+}
+int main(int argc, char **argv)
+{
+    
     sem_init(&g_semaphore,0,0);
     g_input.scan_time = MIN_SCAN_TIME;
     g_status = SCAN_NOT_START;
 	g_input.channel_bitmap = 0;
-    
-
+    get_wds_state ();
     pthread_mutex_init(&g_mutex, NULL);
 
-    if ((pthread_create(&pid1, NULL, scan_thread, NULL)) != 0) {
+    if (g_mode == AP_MODE) {
+        debug("ap mode");
+        if ((pthread_create(&pid1, NULL, scan_thread, NULL)) != 0) {
 
-        return 0;
+            return 0;
+        }
+
+        if ((pthread_create(&pid3, NULL, ubus_thread, NULL)) != 0) {
+
+            return 0;
+        }
+
+#ifdef P2P
+        debug("peer to peer");
+        if ((pthread_create(&pid2, NULL, tipc_receive_thread, NULL)) != 0) {
+
+            return 0;
+        }
+#endif
+    } else if (g_mode == CPE_MODE) {
+        debug("cpe mode");
+        if ((pthread_create(&pid1, NULL, scan_func, NULL)) != 0) {
+
+            return 0;
+        }
+
+#ifdef P2P
+        if ((pthread_create(&pid2, NULL, tipc_receive_thread, NULL)) != 0) {
+
+            return 0;
+        }
+
+#elif defined CS
+        if ((pthread_create(&pid2, NULL, tipc_scan_msg_thread, NULL)) != 0) {
+
+            return 0;
+        }
+        
+        if ((pthread_create(&pid3, NULL, tipc_get_msg_thread, NULL)) != 0) {
+
+            return 0;
+        }
+#endif
     }
-// #ifdef UDP_FUNCTION
-//     if ((pthread_create(&pid2, NULL, tipc_func, NULL)) != 0) {
 
-//         return 0;
-//     }
-// #endif
-    if ((pthread_create(&pid3, NULL, ubus_thread, NULL)) != 0) {
 
-        return 0;
-    }
+
+
+if (g_mode == AP_MODE) {
 
 	if (pthread_join(pid1, NULL) != 0) {
 	
 		return 0;
     }
 
+	if (pthread_join(pid2, NULL) != 0) {
+	
+		return 0;
+    }
+
+#ifdef P2P
 	if (pthread_join(pid3, NULL) != 0) {
 	
 		return 0;
     }
+#endif
+
+} else if (g_mode == CPE_MODE) {
+    if (pthread_join(pid1, NULL) != 0) {
+    
+        return 0;
+    }
+#ifdef P2P
+        if (pthread_join(pid2, NULL) != 0) {
+        
+            return 0;
+        }
+
+#elif defined CS
+    if (pthread_join(pid2, NULL) != 0) {
+    
+        return 0;
+    }
+    if (pthread_join(pid3, NULL) != 0) {
+    
+        return 0;
+    }
+#endif    
+}
+
 	return 0;
 }
 double calculate_N(struct channel_info *info) 
@@ -402,7 +567,7 @@ int timeout_func()
     int i,j;
     
     for (j = 0; j < 30;j++) {
-        printf("wait %d\r\n",j);
+        debug("wait %d",j);
         sleep(1);
         if (get_remote_channel_list(&g_device_list,2) == SUCCESS) {
             return SUCCESS;

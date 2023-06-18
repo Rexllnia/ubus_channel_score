@@ -1,5 +1,8 @@
 #include "device_list.h"
+#include "channel_score_config.h"
+#include <stdio.h>
 
+extern struct user_input g_input;
 int modify_device(struct device_list *device_list,struct device_info *device)
 {
     int pos;
@@ -23,6 +26,29 @@ int find_ap(struct device_list *device_list)
 		}
 	}
 }
+void clear_device_finish_flag(struct device_list *list) {
+	struct device_info *p;
+	int i;
+	list_for_each_device(p, i, list) {
+		p->finished_flag = NOT_FINISH;
+	}
+}
+
+int show_device_info(struct device_info *device_info) {
+	int i;
+	debug("show info");
+	printf(" series_no %s\r\n",device_info->series_no);
+	for (i = 0; i < g_input.channel_num;i++) {
+		printf("\r\n");
+		printf(" channel %d\r\n",device_info->channel_info[i].channel);
+		printf(" floornoise %d\r\n",device_info->channel_info[i].floornoise);
+		printf(" obss_util %d\r\n",device_info->channel_info[i].obss_util);
+		printf(" score %f\r\n",device_info->channel_info[i].score);
+		printf("\r\n");
+	}
+	
+}
+
 int find_device_by_sn(struct device_list *device_list,char *series_no)
 {
 	int i;
@@ -34,8 +60,6 @@ int find_device_by_sn(struct device_list *device_list,char *series_no)
 	}
 	return FAIL;
 }
-
-
 
 void get_online_device(struct device_list *device_list)
 {

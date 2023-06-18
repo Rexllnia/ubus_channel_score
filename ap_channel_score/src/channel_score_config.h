@@ -6,8 +6,14 @@
 #define BRIDGE_PLATFORM
 #define UDP_FUNCTION
 
+#define CS
+
 #define MAX_POPEN_BUFFER_SIZE   4096
 
+#define SCAN_BUSY       1
+#define SCAN_IDLE       2
+#define SCAN_NOT_START  0
+#define SCAN_TIMEOUT  	3
 
 #define FAIL       -1
 #define SUCCESS    0
@@ -18,6 +24,13 @@
 #define PLATFORM_2G     2
 #define PLATFORM_BOTH   0
 
+#define AP_MODE  0
+#define CPE_MODE 1
+unsigned char g_mode;
+
+#define debug(...)  printf("file : %s line: %d func: %s -->",__FILE__,__LINE__,__func__); \
+                    printf(__VA_ARGS__);\
+                    printf("\r\n")
 
 struct user_input {
     int band;
