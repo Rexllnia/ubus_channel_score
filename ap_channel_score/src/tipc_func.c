@@ -1,9 +1,20 @@
 
 #include "tipc_func.h"
 #include "channel_score_config.h"
+#include <netinet/in.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <unistd.h>
 
+extern int g_status;
+extern unsigned char g_mode;
 extern struct user_input g_input;
+extern struct device_list g_finished_device_list;
+extern struct channel_info g_channel_info_5g[36];
+extern struct channel_info realtime_channel_info_5g[36];
+extern pthread_mutex_t g_mutex;
+extern sem_t g_semaphore;
+
 char rg_misc_read_file(char *name,char *buf,char len) {
     int fd;
 
@@ -171,26 +182,80 @@ int tipc_msg_send_receive(__u32 name_type, __u32 name_instance,void *buf,ssize_t
 }
 
 typedef struct tipc_recv_packet_head {
-	unsigned char type;
-	unsigned int len ;
+	unsigned int type;
+	size_t payload_size;
 	unsigned int instant;
 }tipc_recv_packet_head_t;
 
-void *tipc_receive_thread(void * argv)
+int tipc_p2p_send(__u32 dst_instance,__u32 type,size_t payload_size,char *payload)
 {
 	int sd;
-    tipc_recv_packet_head_t head;  //接收缓冲区头
+	struct sockaddr_tipc server_addr;
+    struct timeval timeout={4,0};
+    __u32 src_instant = 0;
+	char mac[20];
+	char *pkt;
+	tipc_recv_packet_head_t *head;
+	size_t pkt_size;
+
+	if(wait_for_server(SERVER_TYPE, ntohl(dst_instance), 100) == FAIL) {
+		return FAIL;
+	}
+	
+	debug("");
+	pkt_size = sizeof(tipc_recv_packet_head_t) + payload_size;
+	debug("");
+	pkt = (char*)malloc(pkt_size * sizeof(char));
+	memset(mac,0,sizeof(mac));
+    rg_misc_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
+    src_instant = rg_mist_mac_2_nodeadd(mac);
+	memcpy((pkt+sizeof(tipc_recv_packet_head_t)),payload,payload_size);
+	head = (tipc_recv_packet_head_t *)pkt;
+	head->instant = src_instant;
+	head->type = type;
+	head->payload_size = payload_size;
+
+	printf("****** TIPC client hello world program started ******\n\n");
+
+
+
+	sd = socket(AF_TIPC, SOCK_RDM, 0);
+
+	server_addr.family = AF_TIPC;
+	server_addr.addrtype = TIPC_ADDR_NAME;
+	server_addr.addr.name.name.type = SERVER_TYPE;
+	server_addr.addr.name.name.instance = ntohl(dst_instance);
+	server_addr.addr.name.domain = 0;
+    
+    setsockopt(sd,SOL_SOCKET,SO_SNDTIMEO,(char*)&timeout,sizeof(struct timeval));
+	if (0 > sendto(sd, pkt, pkt_size, 0,
+	                (struct sockaddr*)&server_addr, sizeof(server_addr))) {
+		perror("Client: failed to send");
+		exit(1);
+	}
+	close(sd);
+}
+
+void *tipc_receive_thread(void * argv)
+{
 
 	struct sockaddr_tipc server_addr;
 	struct sockaddr_tipc client_addr;
 	socklen_t alen = sizeof(client_addr);
-
-    unsigned int instant = 0;
-    unsigned char mac[20];
-
-    struct channel_info *pkt;
-    unsigned int data_len;
-
+	int sd;
+	char *pkt = NULL;
+	tipc_recv_packet_head_t head;
+	size_t pkt_size;
+	char outbuf[BUF_SIZE] = "Uh ?";
+    struct timeval timeout={4,0};
+	unsigned char mac[20];
+	__u32 instant;
+#ifdef CONFIG_TIPC_CORE_DUBUG
+    struct rlimit limit;
+    limit.rlim_cur = RLIM_INFINITY;
+    limit.rlim_max = RLIM_INFINITY;
+    setrlimit(RLIMIT_CORE, &limit);
+#endif
 	printf("****** TIPC server hello world program started ******\n\n");
 
     memset(mac,0,sizeof(mac));
@@ -200,38 +265,81 @@ void *tipc_receive_thread(void * argv)
 
 	server_addr.family = AF_TIPC;
 	server_addr.addrtype = TIPC_ADDR_NAMESEQ;
-	server_addr.addr.nameseq.type = SERVER_TYPE_GET;
-	server_addr.addr.nameseq.lower = instant;
-	server_addr.addr.nameseq.upper = instant;
+	server_addr.addr.nameseq.type = SERVER_TYPE;
+	server_addr.addr.nameseq.lower = ntohl(instant);
+	server_addr.addr.nameseq.upper = ntohl(instant);
 	server_addr.scope = TIPC_ZONE_SCOPE;
 
 	sd = socket(AF_TIPC, SOCK_RDM, 0);
 
-
 	if (0 != bind(sd, (struct sockaddr *)&server_addr, sizeof(server_addr))) {
 		printf("Server: failed to bind port name\n");
+		exit(1);
 	}
-
-	while (1) {	
-		if (recvfrom(sd, &head, sizeof(tipc_recv_packet_head_t), 0,
-						(struct sockaddr *)&client_addr, &alen) != sizeof(tipc_recv_packet_head_t)) {
-			perror("Server: unexpected message");
-			continue;
-		}
-
-		data_len = head.len;
-		pkt = (struct channel_info *)malloc(data_len);
-
-		if (recvfrom(sd, pkt, data_len, 0,
-						(struct sockaddr *)&client_addr, &alen) != data_len) {
-			perror("Server: unexpected message");
-			continue;
-		} 
+	while (1) {
 		
-		printf("pkt_info %d",pkt->score);
+		memset(&head, 0, sizeof(head));
+		if (0 >= recvfrom(sd, &head, sizeof(head), MSG_PEEK,
+						(struct sockaddr *)&client_addr, &alen)) {
+			perror("Server: unexpected message");
+		}
+		debug("type %d",head.type);
+		pkt_size = head.payload_size + sizeof(head);
+		debug("pkt_size %d",pkt_size);
+		pkt = (char *)malloc(sizeof(char) * pkt_size);
+		if (pkt == NULL) {
+			debug("malloc FAIL");
+		}
+		debug("malloc");
+		if (0 >= recvfrom(sd, pkt,pkt_size, 0,
+						(struct sockaddr *)&client_addr, &alen)) {
+			perror("Server: unexpected message");
+		}
+		debug("");
+		if (head.type == SERVER_TYPE_GET) {
+			debug("SERVER_TYPE_GET_REPLY,%d",realtime_channel_info_5g[0].floornoise);
+			if (g_status == SCAN_IDLE) {
+				tipc_p2p_send(head.instant,SERVER_TYPE_GET_REPLY,sizeof(realtime_channel_info_5g),realtime_channel_info_5g);
+			} else {
+				debug("%d\r\n",g_channel_info_5g[0].floornoise);
+				tipc_p2p_send(head.instant,SERVER_TYPE_GET_REPLY,sizeof(g_channel_info_5g),g_channel_info_5g);
+			}
+		} else if (head.type == SERVER_TYPE_GET_REPLY) {
+			struct device_info *p;
+			int i;
+			__u32 instant = 0;
+			list_for_each_device(p,i,&g_finished_device_list) {
+				instant = rg_mist_mac_2_nodeadd(p->mac);
+				debug("instant : %x ",instant);
+				if (instant == head.instant) {	
+					memcpy(p->channel_info,pkt+sizeof(tipc_recv_packet_head_t),head.payload_size);
+					debug("p->channel_info[0].floornoise : %d, payload size %d",p->channel_info[0].floornoise,head.payload_size);
+				}	
+			}
+		} else if (head.type == SERVER_TYPE_SCAN) {
+			debug("SERVER_TYPE_SCAN");
+			while (1) {
+			if (g_status == SCAN_IDLE || g_status == SCAN_NOT_START) {
+					pthread_mutex_lock(&g_mutex);
+					memcpy(&g_input,(pkt+sizeof(tipc_recv_packet_head_t)),sizeof(g_input));
+					debug("%ld",g_input.channel_bitmap);
+					g_status = SCAN_BUSY;
+					pthread_mutex_unlock(&g_mutex);
+					sem_post(&g_semaphore);
+					break;	
+				} else if (g_status == SCAN_BUSY) {
+					pthread_mutex_lock(&g_mutex);
+					g_status = SCAN_TIMEOUT;
+					pthread_mutex_unlock(&g_mutex);
+				}
+			} 
+		}
+	debug("free");
+	free(pkt);
+	pkt = NULL;
+		// printf("Server: Message received: %s !\n", pkt+sizeof(head));
 	}
-
-    close(sd);
+		
     return 0;
 }
 

@@ -6,7 +6,7 @@
 #define BRIDGE_PLATFORM
 #define UDP_FUNCTION
 
-#define CS
+#define P2P
 
 #define MAX_POPEN_BUFFER_SIZE   4096
 

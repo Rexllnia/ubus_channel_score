@@ -88,10 +88,11 @@ extern double calculate_channel_score(struct channel_info *info);
 extern double calculate_N(struct channel_info *info);
 
 
+
+#ifdef CS
 int send_remote_scan_msg(struct device_list *list,int wait_sec) 
 {
-
-
+	
 	struct device_info *p;
 	int instant = 0;
 	int i;
@@ -114,7 +115,6 @@ int send_remote_scan_msg(struct device_list *list,int wait_sec)
 
 
 }
-#ifdef CS
 int get_remote_channel_list(struct device_list *dst_list,int wait_sec)
 {
 	struct device_info *p;
@@ -136,19 +136,41 @@ int get_remote_channel_list(struct device_list *dst_list,int wait_sec)
 	return SUCCESS;
 }
 #elif defined P2P
-int get_remote_channel_list(struct device_list *dst_list,int wait_sec) {
+int send_remote_scan_msg(struct device_list *list,int wait_sec) 
+{
+	
 	struct device_info *p;
-	int i,instant;
+	__u32 instant = 0;
+	int i;
+	
+	memset(list,0,sizeof(struct device_list));
+	get_online_device(list);
 
+    debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
+	list_for_each_device(p,i,list) {
+		if (strcmp(p->role,"ap") != 0) {
+			instant = rg_mist_mac_2_nodeadd(p->mac);
+			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
+
+			tipc_p2p_send(instant,SERVER_TYPE_SCAN,sizeof(g_input),&g_input);
+		}	
+	}
+
+}
+int get_remote_channel_list(struct device_list *dst_list,int wait_sec) 
+{
+	
+	struct device_info *p;
+	__u32 instant;
+	int i;
+	char hello[19] = "client get message";
 		list_for_each_device(p,i,dst_list) {
 		if (strcmp(p->role,"ap") != 0) {	
 			instant = rg_mist_mac_2_nodeadd(p->mac);
 			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
-			if (tipc_msg_send(SERVER_TYPE_GET,instant,p->channel_info,36 * sizeof(struct channel_info),wait_sec) == FAIL) {
+			if (tipc_p2p_send(instant,SERVER_TYPE_GET,19,hello) == FAIL) {
 				return FAIL;
 			}
-
-			printf("test : %d\r\n",p->channel_info[0].floornoise);
 		}	
 	}
 	return SUCCESS;
@@ -413,6 +435,52 @@ static void add_channel_info_blobmsg(struct blob_buf *buf,struct channel_info *c
 		blobmsg_close_table(buf, obj);
 	}
 }
+void add_bw20_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list) 
+{
+	void *const bw20_table = blobmsg_open_table(buf, "bw_20");
+	int best_channel_ptr;
+	struct channel_info bw20_channel[36];
+
+	int j,i;
+	double channel_avg_score[36];
+	char temp[100];
+	struct device_info *p;
+	debug("");
+	memset(channel_avg_score,0,36*sizeof(double));
+	debug("");
+	for (j = 0;j < g_input.channel_num; j++) {
+		list_for_each_device(p, i, list) {
+			channel_avg_score[j] += p->channel_info[j].score;
+			debug("channel %d",p->channel_info[j].channel);
+			debug("score  %f",p->channel_info[j].score);
+		}
+		debug("ans  %f",channel_avg_score[j]);
+		channel_avg_score[j] /= (list->list_len);
+		debug("list->list_len %d",list->list_len);
+		debug("channel_avg_score %f",channel_avg_score[j]);
+	}
+
+	
+
+	best_channel_ptr = 0;
+	for (i = 0 ;i < g_input.channel_num;i++) {
+		if (channel_avg_score[best_channel_ptr] < channel_avg_score[i]) {
+			best_channel_ptr = i;
+		}
+	}
+
+	debug("best_channel_ptr %d" ,best_channel_ptr);
+
+	sprintf(temp,"%f",channel_avg_score[best_channel_ptr]);
+	blobmsg_add_string(buf,"score",temp);
+	debug("best_score %f" ,channel_avg_score[best_channel_ptr]);
+
+	sprintf(temp,"%d",g_channel_info_5g[best_channel_ptr].channel);
+	blobmsg_add_string(buf,"channel",temp);
+	debug("channel %d" ,g_channel_info_5g[best_channel_ptr].channel);
+
+	blobmsg_close_table(buf, bw20_table);
+}
 void add_bw40_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list) 
 {
 	void *const bw40_table = blobmsg_open_table(buf, "bw_40");
@@ -424,7 +492,7 @@ void add_bw40_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list
 	char temp[100];
 	struct device_info *p;
 
-	memset(channel_avg_score,0,36);
+	memset(channel_avg_score,0,36*sizeof(double));
 
 	for (j = 0;j < g_input.channel_num / 2; j++) {
 		list_for_each_device(p, i, list) {
@@ -433,15 +501,13 @@ void add_bw40_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list
 		channel_avg_score[j] /= (list->list_len);
 	}
 
-	
-
 	best_channel_ptr = 0;
 	for (i = 0 ;i < g_input.channel_num / 2;i++) {
 		if (channel_avg_score[best_channel_ptr] < channel_avg_score[i]) {
 			best_channel_ptr = i;
 		}
 	}
-
+	debug("best_channel_ptr %d" ,best_channel_ptr);
 	sprintf(temp,"%f",channel_avg_score[best_channel_ptr]);
 	blobmsg_add_string(buf,"score",temp);
 
@@ -461,8 +527,8 @@ void add_bw80_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list
 	char temp[100];
 	struct device_info *p;
 
-	memset(channel_avg_score,0,36);
-
+	memset(channel_avg_score,0,36*sizeof(double));
+	
 	for (j = 0;j < g_input.channel_num / 4; j++) {
 		list_for_each_device(p, i, list) {
 			channel_avg_score[j] += p->bw80_channel[j].score;
@@ -478,7 +544,7 @@ void add_bw80_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list
 			best_channel_ptr = i;
 		}
 	}
-
+	debug("best_channel_ptr %d" ,best_channel_ptr);
 	sprintf(temp,"%f",channel_avg_score[best_channel_ptr]);
 	blobmsg_add_string(buf,"score",temp);
 
@@ -539,6 +605,7 @@ static void get_reply(struct uloop_timeout *t)
 	/* best channel*/
 	void * const best_channel_obj = blobmsg_open_table(&buf, "best_channel");
 	debug("");
+	add_bw20_best_channel_blobmsg(&buf,&g_finished_device_list);
 	add_bw40_best_channel_blobmsg(&buf,&g_finished_device_list);
 	add_bw80_best_channel_blobmsg(&buf,&g_finished_device_list);
 

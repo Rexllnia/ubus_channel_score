@@ -1,4 +1,6 @@
 #include "tipc_scan_msg.h"
+#include "channel_score_config.h"
+
 
 
 extern pthread_mutex_t g_mutex;
@@ -65,11 +67,20 @@ void *tipc_get_msg_thread()
 		printf("Server: failed to bind port name\n");
 	}
 
+
+
 	while (1) {	
+		// if (0 >= recvfrom(sd, inbuf, sizeof(struct channel_info), MSG_PEEK,
+		// 				(struct sockaddr *)&client_addr, &alen)) {
+		// 	perror("Server: unexpected message");
+		// }
+		debug("%d",inbuf[0].floornoise);
+		debug("%d",inbuf[1].floornoise);
 		if (0 >= recvfrom(sd, inbuf, sizeof(inbuf), 0,
 						(struct sockaddr *)&client_addr, &alen)) {
 			perror("Server: unexpected message");
 		}
+		debug("%d",inbuf[1].floornoise);
 
 		debug("realtime_channel_info_5g floornoise %d ",realtime_channel_info_5g[0].floornoise);
 		debug("realtime_channel_info_5g obss_util %d ",realtime_channel_info_5g[0].obss_util);
@@ -85,9 +96,7 @@ void *tipc_get_msg_thread()
 				perror("Server: failed to send");
 			}
 		}
-
-
-
+		
 		printf("\n****** TIPC GET server program finished ******\n");
 	}	
 }
@@ -129,6 +138,7 @@ void *tipc_scan_msg_thread()
 	}
 
 	while (1) {	
+
 		if (0 >= recvfrom(sd, &inbuf, sizeof(struct user_input), 0,
 						(struct sockaddr *)&client_addr, &alen)) {
 			perror("Server: unexpected message");
@@ -150,7 +160,6 @@ void *tipc_scan_msg_thread()
 				pthread_mutex_unlock(&g_mutex);
 				sem_post(&g_semaphore);
 				break;
-				
 			} else if (g_status == SCAN_BUSY) {
 				pthread_mutex_lock(&g_mutex);
 				g_status = SCAN_TIMEOUT;
