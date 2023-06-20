@@ -225,7 +225,8 @@ static void realtime_get_reply(struct uloop_timeout *t)
 
 
 	/* scan list*/
-	add_timestamp_blobmsg(&buf,g_current_time);
+	add_timestamp_blobmsg(&buf,&g_current_time);
+	debug("");
 	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
 	
 	for (i = 0;i < g_device_list.list_len;i++) {
@@ -566,13 +567,13 @@ static void get_reply(struct uloop_timeout *t)
 	}
 
 
-	
+	add_timestamp_blobmsg(&buf,&g_current_time);
 	// get_remote_channel_list(&g_finished_device_list, 4);
 	debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
 	/* scan list*/
 	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
 	
-
+	
 	for (i = 0;i < g_finished_device_list.list_len;i++) {
 		debug("");
 		// show_device_info(&g_finished_device_list.device[i]);
