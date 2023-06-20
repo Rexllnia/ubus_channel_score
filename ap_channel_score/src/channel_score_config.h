@@ -2,13 +2,15 @@
 #ifndef _CHANNEL_SCORE_CONFIG_H_
 #define _CHANNEL_SCORE_CONFIG_H_
 
+#include "tools.h"
+
 #define POPEN_CMD_ENABLE
 #define BRIDGE_PLATFORM
 #define UDP_FUNCTION
 
 #define P2P
 
-#define MAX_POPEN_BUFFER_SIZE   4096
+#define MAX_POPEN_BUFFER_SIZE   8192
 
 #define SCAN_BUSY       1
 #define SCAN_IDLE       2

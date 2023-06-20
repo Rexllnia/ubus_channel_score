@@ -170,5 +170,4 @@ void *tipc_scan_msg_thread()
 		printf("\n****** TIPC server hello program finished ******\n");
 	}
 	
-	
 }

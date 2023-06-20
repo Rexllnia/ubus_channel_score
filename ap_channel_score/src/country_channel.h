@@ -19,7 +19,6 @@ struct country_channel_info {
 int channel_to_bitmap (int channel);
 int bitmap_to_channel (int bit_set);
 int get_country_channel_bitmap(int bw,long *bitmap_2G,long *bitmap_5G,int band);
-int execute_cmd(char *cmd,char **rbuf);
 
 #endif
 

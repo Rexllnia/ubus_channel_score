@@ -46,6 +46,7 @@ dev_list : type device_list
 #define list_for_each_device(p,i,dev_list) \
     for ((p) = (dev_list)->device,i = 0;i < (dev_list)->list_len;p++,i++)
 
+int all_devices_finished(struct device_list *device_list);
 int show_device_info(struct device_info *device_info);
 int modify_device(struct device_list *device_list,struct device_info *device);
 int find_device_by_sn(struct device_list *device_list,char *series_no);

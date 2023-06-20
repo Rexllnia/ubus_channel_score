@@ -263,7 +263,12 @@ void *scan_thread(void *arg)
             g_current_time = time(NULL);
 
             change_channel(current_channel_info.channel);
-
+            
+            clear_device_finish_flag(&g_device_list);
+        	/* find AP */
+	        i = find_ap(&g_device_list);
+            g_device_list.device[i].finished_flag = FINISHED;
+            
             if (timeout_func() == FAIL) {
                 pthread_mutex_lock(&g_mutex);
                 g_status = SCAN_TIMEOUT;
@@ -299,8 +304,10 @@ void *scan_func()
     
     while (1) {
         sem_wait(&g_semaphore);
-        
+     
         if (g_status == SCAN_BUSY) {
+            /* timestamp */
+            g_current_time = time(NULL);   
             debug("CPE SCAN START");
             get_channel_info(&current_channel_info,PLATFORM_5G);
             memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
@@ -325,8 +332,7 @@ void *scan_func()
                 }
             }
             
-            /* timestamp */
-            g_current_time = time(NULL);
+
             change_channel(current_channel_info.channel);
 
             
@@ -566,6 +572,7 @@ int timeout_func()
 {
     
     int i,j;
+    
     
     for (j = 0; j < 30;j++) {
         debug("wait %d",j);

@@ -112,8 +112,6 @@ int send_remote_scan_msg(struct device_list *list,int wait_sec)
 
 		}	
 	}
-
-
 }
 int get_remote_channel_list(struct device_list *dst_list,int wait_sec)
 {
@@ -168,7 +166,7 @@ int get_remote_channel_list(struct device_list *dst_list,int wait_sec)
 		if (strcmp(p->role,"ap") != 0) {	
 			instant = rg_mist_mac_2_nodeadd(p->mac);
 			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
-			if (tipc_p2p_send(instant,SERVER_TYPE_GET,19,hello) == FAIL) {
+			if (tipc_p2p_send_receive(instant,SERVER_TYPE_GET,19,hello) == FAIL) {
 				return FAIL;
 			}
 		}	
@@ -234,6 +232,7 @@ static void realtime_get_reply(struct uloop_timeout *t)
 	memset(&g_device_list,0,sizeof(g_device_list)); /* xxx */
 
 	get_online_device(&g_device_list);
+	clear_device_finish_flag(&g_device_list);
 	/* find AP */
 	i = find_ap(&g_device_list);
 	debug("%s i = %d",__func__,i);
@@ -242,8 +241,14 @@ static void realtime_get_reply(struct uloop_timeout *t)
 	g_device_list.device[i].timestamp = time(NULL);
 	g_device_list.device[i].input = g_input;
 	g_device_list.device[i].status = g_status;
+	g_device_list.device[i].finished_flag = FINISHED;
 
-	get_remote_channel_list(&g_device_list,4);
+	add_timestamp_blobmsg(&buf,&g_current_time);
+
+	if (get_remote_channel_list(&g_device_list,4) == FAIL) {
+		debug("timeout");
+		goto timeout;
+	}
 
 
 	/* scan list*/
@@ -256,7 +261,7 @@ static void realtime_get_reply(struct uloop_timeout *t)
 	blobmsg_close_array(&buf, scan_list_obj);
 
 	ubus_send_reply(ctx, &req->req, buf.head);
-
+timeout:
 	if (pipe(fds) == -1) {
 		fprintf(stderr, "Failed to create pipe\n");
 		return;
@@ -265,6 +270,7 @@ static void realtime_get_reply(struct uloop_timeout *t)
 	ubus_request_set_fd(ctx, &req->req, fds[0]);
 	ubus_complete_deferred_request(ctx, &req->req, 0);
 	req->fd = fds[1];
+
 
 	
 	free(req);
@@ -347,7 +353,7 @@ static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *dev
 	blobmsg_add_string(buf, "SN",device->series_no);
 	blobmsg_add_string(buf, "role",device->role);
 	
-	add_timestamp_blobmsg(buf,&(device->timestamp));
+	
 	
 	
 	/* 5G */
@@ -587,7 +593,7 @@ static void get_reply(struct uloop_timeout *t)
 	}
 
 
-	
+	add_timestamp_blobmsg(&buf,&g_current_time);
 	// get_remote_channel_list(&g_finished_device_list, 4);
 	debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
 	/* scan list*/

@@ -60,7 +60,19 @@ int find_device_by_sn(struct device_list *device_list,char *series_no)
 	}
 	return FAIL;
 }
+int all_devices_finished(struct device_list *device_list) {
+	
+	struct device_info *p;
+	int i;
+	list_for_each_device(p, i, device_list) {
+		debug("p->finished_flag %d",p->finished_flag);
+		if (p->finished_flag == NOT_FINISH) {
+			return FAIL;
+		}
+	}
 
+	return SUCCESS;
+}
 void get_online_device(struct device_list *device_list)
 {
 	char *rbuf;
@@ -71,15 +83,17 @@ void get_online_device(struct device_list *device_list)
 	json_object *list_all_obj;
 	json_object *list_pair_obj;
 	json_object *sn_obj,*role_obj,*mac_obj;
-
+	json_object *list_all_elem ;
 	
 	execute_cmd("dev_sta get -m wds_list_all",&rbuf);
 
 	rbuf_root = json_tokener_parse(rbuf);
 	list_all_obj = json_object_object_get(rbuf_root,"list_all");
-	json_object *list_all_elem = json_object_array_get_idx(list_all_obj,0);
+	debug("");
+	list_all_elem = json_object_array_get_idx(list_all_obj,0);
+	debug("");
 	list_pair_obj = json_object_object_get(list_all_elem,"list_pair");
-
+	debug("");
 	device_list->list_len = json_object_array_length(list_pair_obj);
 
 	for (i = 0;i < json_object_array_length(list_pair_obj);i++) {
