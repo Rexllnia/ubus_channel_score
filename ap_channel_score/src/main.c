@@ -301,6 +301,7 @@ void *scan_func()
         sem_wait(&g_semaphore);
         
         if (g_status == SCAN_BUSY) {
+            debug("CPE SCAN START");
             get_channel_info(&current_channel_info,PLATFORM_5G);
             memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
             for (j = 0,i = 0; i < sizeof(long) * ONE_BYTE; i++) {

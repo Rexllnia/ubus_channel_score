@@ -6,15 +6,16 @@
 #include <stdio.h>
 #include <unistd.h>
 
-extern int g_status;
+extern volatile int g_status;
 extern unsigned char g_mode;
 extern struct user_input g_input;
-extern struct device_list g_finished_device_list;
+extern struct device_list g_finished_device_list,g_device_list;
 extern struct channel_info g_channel_info_5g[36];
 extern struct channel_info realtime_channel_info_5g[36];
 extern pthread_mutex_t g_mutex;
 extern sem_t g_semaphore;
 
+static sem_t receive_finish_semaphore;
 char rg_misc_read_file(char *name,char *buf,char len) {
     int fd;
 
@@ -209,13 +210,20 @@ int tipc_p2p_send(__u32 dst_instance,__u32 type,size_t payload_size,char *payloa
 	memset(mac,0,sizeof(mac));
     rg_misc_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
     src_instant = rg_mist_mac_2_nodeadd(mac);
-	memcpy((pkt+sizeof(tipc_recv_packet_head_t)),payload,payload_size);
+
+	memcpy(pkt+sizeof(tipc_recv_packet_head_t),payload,payload_size);
 	head = (tipc_recv_packet_head_t *)pkt;
+	
+
 	head->instant = src_instant;
 	head->type = type;
 	head->payload_size = payload_size;
 
-	printf("****** TIPC client hello world program started ******\n\n");
+	// struct channel_info cp[36];
+	// memcpy(cp,(head + sizeof(tipc_recv_packet_head_t)),sizeof(cp));
+	// debug("%d",cp[0].obss_util);
+	// debug("%d",cp[0].floornoise);
+	// printf("****** TIPC client hello world program started ******\n\n");
 
 
 
@@ -234,6 +242,8 @@ int tipc_p2p_send(__u32 dst_instance,__u32 type,size_t payload_size,char *payloa
 		exit(1);
 	}
 	close(sd);
+
+	sem_wait(&receive_finish_semaphore);
 }
 
 void *tipc_receive_thread(void * argv)
@@ -243,7 +253,7 @@ void *tipc_receive_thread(void * argv)
 	struct sockaddr_tipc client_addr;
 	socklen_t alen = sizeof(client_addr);
 	int sd;
-	char *pkt = NULL;
+	
 	tipc_recv_packet_head_t head;
 	size_t pkt_size;
 	char outbuf[BUF_SIZE] = "Uh ?";
@@ -257,6 +267,8 @@ void *tipc_receive_thread(void * argv)
     setrlimit(RLIMIT_CORE, &limit);
 #endif
 	printf("****** TIPC server hello world program started ******\n\n");
+
+	sem_init(&receive_finish_semaphore,0,0);
 
     memset(mac,0,sizeof(mac));
     rg_misc_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
@@ -277,7 +289,7 @@ void *tipc_receive_thread(void * argv)
 		exit(1);
 	}
 	while (1) {
-		
+		char *pkt;
 		memset(&head, 0, sizeof(head));
 		if (0 >= recvfrom(sd, &head, sizeof(head), MSG_PEEK,
 						(struct sockaddr *)&client_addr, &alen)) {
@@ -298,27 +310,33 @@ void *tipc_receive_thread(void * argv)
 		debug("");
 		if (head.type == SERVER_TYPE_GET) {
 			debug("SERVER_TYPE_GET_REPLY,%d",realtime_channel_info_5g[0].floornoise);
-			if (g_status == SCAN_IDLE) {
+			debug("g_channel_info_5g %d\r\n",g_channel_info_5g[0].floornoise);
+			debug("g_status %d",g_status);
+			if (g_status == SCAN_BUSY) {
 				tipc_p2p_send(head.instant,SERVER_TYPE_GET_REPLY,sizeof(realtime_channel_info_5g),realtime_channel_info_5g);
 			} else {
-				debug("%d\r\n",g_channel_info_5g[0].floornoise);
+				debug("g_channel_info_5g %d\r\n",g_channel_info_5g[0].floornoise);
 				tipc_p2p_send(head.instant,SERVER_TYPE_GET_REPLY,sizeof(g_channel_info_5g),g_channel_info_5g);
 			}
+
 		} else if (head.type == SERVER_TYPE_GET_REPLY) {
 			struct device_info *p;
 			int i;
 			__u32 instant = 0;
-			list_for_each_device(p,i,&g_finished_device_list) {
+			debug("list len %d",g_finished_device_list.list_len);
+			list_for_each_device(p,i,&g_device_list) {
 				instant = rg_mist_mac_2_nodeadd(p->mac);
 				debug("instant : %x ",instant);
 				if (instant == head.instant) {	
 					memcpy(p->channel_info,pkt+sizeof(tipc_recv_packet_head_t),head.payload_size);
-					debug("p->channel_info[0].floornoise : %d, payload size %d",p->channel_info[0].floornoise,head.payload_size);
+					debug("p->channel_info[0].channel p->channel_info[0].floornoise : %d, payload size %d",p->channel_info[0].channel,p->channel_info[0].floornoise,head.payload_size);
 				}	
 			}
+			
 		} else if (head.type == SERVER_TYPE_SCAN) {
 			debug("SERVER_TYPE_SCAN");
 			while (1) {
+				debug("g_status %d",g_status);
 			if (g_status == SCAN_IDLE || g_status == SCAN_NOT_START) {
 					pthread_mutex_lock(&g_mutex);
 					memcpy(&g_input,(pkt+sizeof(tipc_recv_packet_head_t)),sizeof(g_input));
@@ -333,10 +351,10 @@ void *tipc_receive_thread(void * argv)
 					pthread_mutex_unlock(&g_mutex);
 				}
 			} 
+			sem_post(&receive_finish_semaphore);
 		}
 	debug("free");
 	free(pkt);
-	pkt = NULL;
 		// printf("Server: Message received: %s !\n", pkt+sizeof(head));
 	}
 		
