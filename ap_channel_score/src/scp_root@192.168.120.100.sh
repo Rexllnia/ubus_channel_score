@@ -12,5 +12,6 @@ expect -c "
     expect {
         \"*assword\" {set timeout 300; send \"$pass\r\"; exp_continue;}
         \"yes/no\" {send \"yes\r\";}
+        \"$ \" {send \"ls\r\";}
     }
 "

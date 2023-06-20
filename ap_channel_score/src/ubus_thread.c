@@ -97,8 +97,10 @@ int send_remote_scan_msg(struct device_list *list,int wait_sec)
 	int i;
 	
 	memset(list,0,sizeof(struct device_list));
+	debug("");
 	get_online_device(list);
-
+	debug("");
+	
     debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
 	list_for_each_device(p,i,list) {
 		if (strcmp(p->role,"ap") != 0) {
@@ -785,8 +787,9 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 
 
 		g_status = SCAN_BUSY;
-		
+		debug("");
 		send_remote_scan_msg(&g_finished_device_list,1000);
+		debug("");
 		// clear_device_finish_flag(&g_finished_device_list);
 		sem_post(&g_semaphore);
 		pthread_mutex_unlock(&g_mutex);

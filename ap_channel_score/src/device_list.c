@@ -72,16 +72,22 @@ void get_online_device(struct device_list *device_list)
 	json_object *list_pair_obj;
 	json_object *sn_obj,*role_obj,*mac_obj;
 
-	
+	debug("");
 	execute_cmd("dev_sta get -m wds_list_all",&rbuf);
+	debug("");
 
 	rbuf_root = json_tokener_parse(rbuf);
+	debug("");
 	list_all_obj = json_object_object_get(rbuf_root,"list_all");
+	debug("");
+	
 	json_object *list_all_elem = json_object_array_get_idx(list_all_obj,0);
+	debug("");
 	list_pair_obj = json_object_object_get(list_all_elem,"list_pair");
 
+	debug("");
 	device_list->list_len = json_object_array_length(list_pair_obj);
-
+	debug("");
 	for (i = 0;i < json_object_array_length(list_pair_obj);i++) {
 		json_object *list_pair_elem;
 		list_pair_elem = json_object_array_get_idx(list_pair_obj,i);
@@ -93,6 +99,7 @@ void get_online_device(struct device_list *device_list)
 		strcpy(device_list->device[i].mac,json_object_get_string(mac_obj));
 	}
 
+	debug("");
 	free(rbuf);
 	json_object_put(rbuf_root);
 }
