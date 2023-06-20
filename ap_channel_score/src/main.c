@@ -236,6 +236,8 @@ void *scan_thread(void *arg)
         sem_wait(&g_semaphore);
         
         if (g_status == SCAN_BUSY) {
+            /* timestamp */
+            g_current_time = time(NULL);
             get_channel_info(&current_channel_info,PLATFORM_5G);
             get_online_device(&g_device_list);
             memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
@@ -259,8 +261,7 @@ void *scan_thread(void *arg)
                 }
             }
             
-            /* timestamp */
-            g_current_time = time(NULL);
+
 
             change_channel(current_channel_info.channel);
 

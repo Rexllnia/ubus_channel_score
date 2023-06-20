@@ -225,6 +225,7 @@ static void realtime_get_reply(struct uloop_timeout *t)
 
 
 	/* scan list*/
+	add_timestamp_blobmsg(&buf,g_current_time);
 	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
 	
 	for (i = 0;i < g_device_list.list_len;i++) {
@@ -325,7 +326,7 @@ static void add_device_info_blobmsg(struct blob_buf *buf,struct device_info *dev
 	blobmsg_add_string(buf, "SN",device->series_no);
 	blobmsg_add_string(buf, "role",device->role);
 	
-	add_timestamp_blobmsg(buf,&(device->timestamp));
+	
 	
 	
 	/* 5G */
@@ -413,6 +414,52 @@ static void add_channel_info_blobmsg(struct blob_buf *buf,struct channel_info *c
 		blobmsg_close_table(buf, obj);
 	}
 }
+void add_bw20_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list) 
+{
+	void *const bw20_table = blobmsg_open_table(buf, "bw_20");
+	int best_channel_ptr;
+	struct channel_info bw20_channel[36];
+
+	int j,i;
+	double channel_avg_score[36];
+	char temp[100];
+	struct device_info *p;
+	debug("");
+	memset(channel_avg_score,0,36*sizeof(double));
+	debug("");
+	for (j = 0;j < g_input.channel_num; j++) {
+		list_for_each_device(p, i, list) {
+			channel_avg_score[j] += p->channel_info[j].score;
+			debug("channel %d",p->channel_info[j].channel);
+			debug("score  %f",p->channel_info[j].score);
+		}
+		debug("ans  %f",channel_avg_score[j]);
+		channel_avg_score[j] /= (list->list_len);
+		debug("list->list_len %d",list->list_len);
+		debug("channel_avg_score %f",channel_avg_score[j]);
+	}
+
+	
+
+	best_channel_ptr = 0;
+	for (i = 0 ;i < g_input.channel_num;i++) {
+		if (channel_avg_score[best_channel_ptr] < channel_avg_score[i]) {
+			best_channel_ptr = i;
+		}
+	}
+
+	debug("best_channel_ptr %d" ,best_channel_ptr);
+
+	sprintf(temp,"%f",channel_avg_score[best_channel_ptr]);
+	blobmsg_add_string(buf,"score",temp);
+	debug("best_score %f" ,channel_avg_score[best_channel_ptr]);
+
+	sprintf(temp,"%d",g_channel_info_5g[best_channel_ptr].channel);
+	blobmsg_add_string(buf,"channel",temp);
+	debug("channel %d" ,g_channel_info_5g[best_channel_ptr].channel);
+
+	blobmsg_close_table(buf, bw20_table);
+}
 void add_bw40_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list) 
 {
 	void *const bw40_table = blobmsg_open_table(buf, "bw_40");
@@ -424,7 +471,7 @@ void add_bw40_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list
 	char temp[100];
 	struct device_info *p;
 
-	memset(channel_avg_score,0,36);
+	memset(channel_avg_score,0,36*sizeof(double));
 
 	for (j = 0;j < g_input.channel_num / 2; j++) {
 		list_for_each_device(p, i, list) {
@@ -433,15 +480,13 @@ void add_bw40_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list
 		channel_avg_score[j] /= (list->list_len);
 	}
 
-	
-
 	best_channel_ptr = 0;
 	for (i = 0 ;i < g_input.channel_num / 2;i++) {
 		if (channel_avg_score[best_channel_ptr] < channel_avg_score[i]) {
 			best_channel_ptr = i;
 		}
 	}
-
+	debug("best_channel_ptr %d" ,best_channel_ptr);
 	sprintf(temp,"%f",channel_avg_score[best_channel_ptr]);
 	blobmsg_add_string(buf,"score",temp);
 
@@ -461,8 +506,8 @@ void add_bw80_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list
 	char temp[100];
 	struct device_info *p;
 
-	memset(channel_avg_score,0,36);
-
+	memset(channel_avg_score,0,36*sizeof(double));
+	
 	for (j = 0;j < g_input.channel_num / 4; j++) {
 		list_for_each_device(p, i, list) {
 			channel_avg_score[j] += p->bw80_channel[j].score;
@@ -478,7 +523,7 @@ void add_bw80_best_channel_blobmsg(struct blob_buf *buf,struct device_list *list
 			best_channel_ptr = i;
 		}
 	}
-
+	debug("best_channel_ptr %d" ,best_channel_ptr);
 	sprintf(temp,"%f",channel_avg_score[best_channel_ptr]);
 	blobmsg_add_string(buf,"score",temp);
 
@@ -539,6 +584,8 @@ static void get_reply(struct uloop_timeout *t)
 	/* best channel*/
 	void * const best_channel_obj = blobmsg_open_table(&buf, "best_channel");
 	debug("");
+
+	add_bw20_best_channel_blobmsg(&buf,&g_finished_device_list);
 	add_bw40_best_channel_blobmsg(&buf,&g_finished_device_list);
 	add_bw80_best_channel_blobmsg(&buf,&g_finished_device_list);
 
