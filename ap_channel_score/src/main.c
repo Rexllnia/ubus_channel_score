@@ -28,26 +28,17 @@
 #include <sys/mman.h>
 #include <libubus.h>
 #include <json-c/json.h>
-#include "composite_score.h"
-#include "device_list.h"
-#include "ubus_thread.h"
+#include "spctrm_scn_dev.h"
+#include "spctrm_scn_ubus.h"
 #include "lib_unifyframe.h"
-#include "channel_score_config.h"
-#include "tipc_scan_msg.h"
+#include "spctrm_scn_config.h"
 
 #define PLATFORM_5G_ENABLE
 #define BRIDGE_PLATFORM
-#define MIN_SCAN_TIME 15 
-#define MAX_SCAN_TIME 60
-#define ONE_BYTE 8
-#define EXPIRE_TIME 14
 
-int device_list_compare(struct device_list *src_list,struct device_list *dest_list);
-int timeout_func();
-int get_channel_info(struct channel_info *info,int band);
-double calculate_channel_score(struct channel_info *info);
-double calculate_N(struct channel_info *info) ;
-int change_channel(int channel);
+
+
+
 
 extern unsigned char g_mode;
 extern struct device_list g_finished_device_list;
@@ -58,330 +49,12 @@ extern struct user_input g_input;
 volatile int g_status,g_scan_time;
 volatile long g_scan_timestamp;
 extern long g_bitmap_2G,g_bitmap_5G;
+
 pthread_mutex_t g_mutex;
 pthread_t pid1, pid2 ,pid3;
 sem_t g_semaphore;
-time_t g_current_time;
-
-int quick_select(int* arr, int len, int k)
-{
-    int pivot, i, j, tmp;
-
-    pivot = arr[len / 2];
-
-    for (i = 0, j = len - 1;; i++, j--) {
-        while (arr[i] < pivot) i++;
-        while (arr[j] > pivot) j--;
-        if (i >= j) break;
-        tmp = arr[i];
-        arr[i] = arr[j];
-        arr[j] = tmp;
-    }
-
-    if (i == k - 1) {
-        return pivot;
-    }
-    if (i < k - 1) {
-        return quick_select(arr + i, len - i, k - i);
-    }
-
-    return quick_select(arr, i, k);
-}
 
 
-int median(int* arr, int len)
-{
-    int median;
-
-    if (len % 2 == 0) {
-        median = (quick_select(arr, len, len / 2) + quick_select(arr, len, len / 2 + 1)) / 2;
-    } else {
-        median = quick_select(arr, len, len / 2 + 1);
-    }
-        
-    return median;
-}
-
-int get_channel_info(struct channel_info *info,int band) 
-{
-    FILE *fp;
-    char *rbuf;
-    char *p;
-    char cmd[1024];
-
-    if (info == NULL) {
-         return FAIL;
-    }
-
-    if (band == 5) {
-#ifdef BRIDGE_PLATFORM
-        execute_cmd("wlanconfig ra0 radio",&rbuf);
-#elif defined AP
-        execute_cmd("wlanconfig rax0 radio",&rbuf);
-#endif
-    } else if (band == 2) {
-
-    } else {
-        return FAIL;
-    }
-    
-    
-    strtok(rbuf,"\n");
-
-    strtok(NULL,":");
-    p = strtok(NULL,"\n");
-
-
-    info->channel=atoi(p);
-      
-    strtok(NULL,":");
-    p = strtok(NULL,"\n");
-    info->floornoise=atoi(p);
-     
-    strtok(NULL,":");
-    p = strtok(NULL,"\n");
-    info->utilization=atoi(p);
-     
-    strtok(NULL,"\n");
-    strtok(NULL,":");
-    p = strtok(NULL,"\n");
-    info->bw = atoi(p);
-    
-    strtok(NULL,":");
-    p = strtok(NULL,"\n");
-    info->obss_util=atoi(p);
-    
-    strtok(NULL,":");
-    p = strtok(NULL,"\n");
-    info->tx_util=atoi(p);
-   
-    strtok(NULL,":");
-    p = strtok(NULL,"\n");
-
-    info->rx_util=atoi(p);
-    
-    free(rbuf);
-
-    return SUCCESS;
-}
-
-void channel_scan(struct channel_info *input,int scan_time) 
-{
-    FILE *fp;
-    int i;
-    struct channel_info info[MAX_SCAN_TIME];
-    int utilization_temp[MAX_SCAN_TIME];
-    int obss_util_temp[MAX_SCAN_TIME];
-    int floornoise_temp[MAX_SCAN_TIME];
-    int channel_temp[MAX_SCAN_TIME];
-    
-    if (scan_time > MAX_SCAN_TIME) {
-        scan_time = MAX_SCAN_TIME;
-    } 
-
-    if (scan_time < MIN_SCAN_TIME) {
-        scan_time = MIN_SCAN_TIME;
-    }     
-
-    for (i = 0 ;i < scan_time ;i++) {
-        sleep(1);
-
-        get_channel_info(&info[i],PLATFORM_5G);
-        debug("current channel %d",info[i].channel);
-    }
-    
-    fp = fopen("./channel_info","a+");
-    fprintf(fp,"\r\n********channel %d ***********\r\n",info[0].channel);
-    fprintf(fp,"bw %d\r\n",input->bw=info[0].bw);
-
-    fprintf(fp,"channel\t\t");
-    fprintf(fp,"floornoise\t");
-    fprintf(fp,"utilization\t");
-    fprintf(fp,"obss_util\t");
-    fprintf(fp,"rx_util\t\t");
-    fprintf(fp,"tx_util\r\n");
-
-    for (i = 0 ;i < scan_time ;i++) {
-        fprintf(fp,"%d\t\t",channel_temp[i] = info[i].channel);
-        fprintf(fp,"%d\t\t",floornoise_temp[i] = info[i].floornoise);
-        fprintf(fp,"%d\t\t",utilization_temp[i] = info[i].utilization);
-        fprintf(fp,"%d\t\t",obss_util_temp[i] = info[i].obss_util);
-        fprintf(fp,"%d\t\t",info[i].rx_util);
-        fprintf(fp,"%d\r\n",info[i].tx_util);
-    }
-
-    printf("median floornoise%d \r\n",input->floornoise = median(floornoise_temp,scan_time));
-    printf("median utilization%d \r\n",input->utilization = median(utilization_temp,scan_time));
-    printf("median obss_util%d \r\n",input->obss_util = median(obss_util_temp,scan_time));
-    
-    fprintf(fp,"*******************************************************\r\n");
-    fclose(fp);
-
-    debug("g_status %d",g_status);
-
-}
-    
-
-void *scan_thread(void *arg) 
-{
-
-    char *json_str;
-    int i,j,len;
-    double score;
-    struct channel_info current_channel_info;
-    
-    
-
-    while (1) {
-        sem_wait(&g_semaphore);
-        
-        if (g_status == SCAN_BUSY) {
-            get_channel_info(&current_channel_info,PLATFORM_5G);
-            get_online_device(&g_device_list);
-            memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
-            for (j = 0,i = 0; i < sizeof(long) * ONE_BYTE; i++) {
-                if ((g_input.channel_bitmap& (1L << i)) != 0) {
-                    
-                    realtime_channel_info_5g[j].channel = bitmap_to_channel(i);
-
-                    debug("change to channel : %d",realtime_channel_info_5g[j].channel);
-                    
-                    change_channel(realtime_channel_info_5g[j].channel);
-
-                    channel_scan(&realtime_channel_info_5g[j],g_input.scan_time);
-                    sleep(1);
-
-                    debug("g_input.channel_bitmap : %ld",g_input.channel_bitmap);
-                    realtime_channel_info_5g[j].score = calculate_channel_score(&realtime_channel_info_5g[j]);
-                    printf("score %f\r\n",realtime_channel_info_5g[j].score);
-                    printf("------------------\r\n");
-                    j++;  
-                }
-            }
-            
-            /* timestamp */
-            g_current_time = time(NULL);
-
-            change_channel(current_channel_info.channel);
-            
-            clear_device_finish_flag(&g_device_list);
-        	/* find AP */
-	        i = find_ap(&g_device_list);
-            g_device_list.device[i].finished_flag = FINISHED;
-            
-            if (timeout_func() == FAIL) {
-                pthread_mutex_lock(&g_mutex);
-                g_status = SCAN_TIMEOUT;
-                g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
-                pthread_mutex_unlock(&g_mutex);
-            } else {
-                printf( "line : %d func %s g_status : %d,",__LINE__,__func__,g_status);
-                pthread_mutex_lock(&g_mutex);
-                memcpy(g_channel_info_5g,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
-                /* 将CPE端的数据存入完成列表，此时AP端的数据还在g_channel_info中 */
-                debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
-                memcpy(&g_finished_device_list,&g_device_list,sizeof(struct device_list));
-                debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
-                g_status = SCAN_IDLE;
-                g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
-                pthread_mutex_unlock(&g_mutex);
-            }
-
-        }
-    }
-}
-
-void *scan_func() 
-{
-
-    char *json_str;
-
-    
-    int i,j,len;
-    double score;
-    struct channel_info current_channel_info;
-    
-    
-    while (1) {
-        sem_wait(&g_semaphore);
-     
-        if (g_status == SCAN_BUSY) {
-            /* timestamp */
-            g_current_time = time(NULL);   
-            debug("CPE SCAN START");
-            get_channel_info(&current_channel_info,PLATFORM_5G);
-            memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
-            for (j = 0,i = 0; i < sizeof(long) * ONE_BYTE; i++) {
-                if ((g_input.channel_bitmap& (1L << i)) != 0) {
-                    
-                    realtime_channel_info_5g[j].channel = bitmap_to_channel(i);
-                    debug("change channel to %d ",realtime_channel_info_5g[j].channel);
-                    
-                    change_channel(realtime_channel_info_5g[j].channel);
-
-                    channel_scan(&realtime_channel_info_5g[j],g_input.scan_time);
-                    sleep(1);
-                    printf("%ld\r\n",g_input.channel_bitmap);
-                    realtime_channel_info_5g[j].score = calculate_channel_score(&realtime_channel_info_5g[j]);
-                    printf("------------------\r\n");
-                    j++;  
-                }
-
-                if (g_status == SCAN_TIMEOUT) {
-                    goto timeout;
-                }
-            }
-            
-
-            change_channel(current_channel_info.channel);
-
-            
-            pthread_mutex_lock(&g_mutex);
-            
-            memcpy(g_channel_info_5g,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
-            memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
-            g_status = SCAN_IDLE;
-            g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
-
-            pthread_mutex_unlock(&g_mutex);
-
-        }
-timeout:
-    if (g_status == SCAN_TIMEOUT) {
-            change_channel(current_channel_info.channel);
-            pthread_mutex_lock(&g_mutex);
-            g_status = SCAN_IDLE;
-            g_input.scan_time = MIN_SCAN_TIME; /* restore scan time */
-            memset(realtime_channel_info_5g,0,sizeof(realtime_channel_info_5g));
-            pthread_mutex_unlock(&g_mutex);
-        }
-    }
-}
-
-void get_wds_state () {
-    char *rbuf;
-	json_object *rbuf_root;
-    json_object *role_obj;
-
-    char role[4];
-
-    execute_cmd("dev_sta get -m wds_status", &rbuf);
-    rbuf_root = json_tokener_parse(rbuf);
-
-    role_obj = json_object_object_get(rbuf_root,"role");
-
-    if (strcmp(json_object_get_string(role_obj),"cpe") == 0) {
-        g_mode = CPE_MODE;
-    } else if (strcmp(json_object_get_string(role_obj),"ap") == 0) {
-        g_mode = AP_MODE;
-    }
-
-    free(rbuf);
-    debug("g_mode %d",g_mode);
-    
-    
-
-}
 int main(int argc, char **argv)
 {
     
@@ -389,24 +62,24 @@ int main(int argc, char **argv)
     g_input.scan_time = MIN_SCAN_TIME;
     g_status = SCAN_NOT_START;
 	g_input.channel_bitmap = 0;
-    get_wds_state ();
+    spctrm_scn_wireless_wds_state ();
     pthread_mutex_init(&g_mutex, NULL);
 
     if (g_mode == AP_MODE) {
         debug("ap mode");
-        if ((pthread_create(&pid1, NULL, scan_thread, NULL)) != 0) {
+        if ((pthread_create(&pid1, NULL, spctrm_scn_wireless_scan_thread, NULL)) != 0) {
 
             return 0;
         }
 
-        if ((pthread_create(&pid3, NULL, ubus_thread, NULL)) != 0) {
+        if ((pthread_create(&pid3, NULL, spctrm_scn_ubus_thread, NULL)) != 0) {
 
             return 0;
         }
 
 #ifdef P2P
         debug("peer to peer");
-        if ((pthread_create(&pid2, NULL, tipc_receive_thread, NULL)) != 0) {
+        if ((pthread_create(&pid2, NULL, spctrm_scn_tipc_thread, NULL)) != 0) {
 
             return 0;
         }
@@ -417,28 +90,12 @@ int main(int argc, char **argv)
 
             return 0;
         }
-
-#ifdef P2P
-        if ((pthread_create(&pid2, NULL, tipc_receive_thread, NULL)) != 0) {
+        if ((pthread_create(&pid2, NULL, spctrm_scn_tipc_thread, NULL)) != 0) {
 
             return 0;
         }
 
-#elif defined CS
-        if ((pthread_create(&pid2, NULL, tipc_scan_msg_thread, NULL)) != 0) {
-
-            return 0;
-        }
-        
-        if ((pthread_create(&pid3, NULL, tipc_get_msg_thread, NULL)) != 0) {
-
-            return 0;
-        }
-#endif
     }
-
-
-
 
 if (g_mode == AP_MODE) {
 
@@ -518,7 +175,7 @@ double calculate_N(struct channel_info *info)
     
     return N;
 }
-double calculate_channel_score(struct channel_info *info) 
+double spctrm_scn_wireless_channel_score(struct channel_info *info) 
 {
     double N;
 
@@ -553,20 +210,7 @@ double calculate_channel_score(struct channel_info *info)
     return ((double)1 - N/20)*(double)((double)1 - (double)info->obss_util / 95) * 300 * 0.75;
 }
 
-int device_list_compare(struct device_list *src_list,struct device_list *dest_list) {
 
-    int i,count;
-    struct device_info *p;
-    count = 0;
-
-    list_for_each_device(p, i, src_list) {
-        if (find_device_by_sn(dest_list, p->series_no) == FAIL) {
-            count++;
-        }
-    }
-
-    return count;
-}
 
 int timeout_func() 
 {
@@ -577,7 +221,7 @@ int timeout_func()
     for (j = 0; j < 30;j++) {
         debug("wait %d",j);
         sleep(1);
-        if (get_remote_channel_list(&g_device_list,2) == SUCCESS) {
+        if (spctrm_scn_tipc_send_get_msg(&g_device_list,2) == SUCCESS) {
             return SUCCESS;
         }
     }
@@ -586,17 +230,17 @@ int timeout_func()
 
 
 #ifdef POPEN_CMD_ENABLE
-int change_channel(int channel) 
+int spctrm_scn_wireless_change_channel(int channel) 
 {
     char cmd[MAX_POPEN_BUFFER_SIZE];
     sprintf(cmd,"dev_config update -m radio '{ \"radioList\": [ { \"radioIndex\": \"1\", \"type\":\"5G\", \"channel\":\"%d\" } ]}'",channel);
     // sprintf(cmd,"iwpriv ra0 set channel=%d",channel);
-    execute_cmd(cmd,NULL);
+    spctrm_scn_common_cmd(cmd,NULL);
 
     return 0;
 }
 #elif defined UNIFY_FRAMEWORK_ENABLE
-int change_channel(int channel) 
+int spctrm_scn_wireless_change_channel(int channel) 
 {
     uf_cmd_msg_t *msg_obj;
     int ret;

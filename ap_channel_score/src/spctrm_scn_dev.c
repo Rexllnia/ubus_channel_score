@@ -1,9 +1,25 @@
-#include "device_list.h"
-#include "channel_score_config.h"
+#include "spctrm_scn_dev.h"
+#include "spctrm_scn_config.h"
 #include <stdio.h>
 
 extern struct user_input g_input;
-int modify_device(struct device_list *device_list,struct device_info *device)
+
+int spctrm_scn_dev_list_cmp(struct device_list *src_list,struct device_list *dest_list) {
+
+    int i,count;
+    struct device_info *p;
+    count = 0;
+
+    list_for_each_device(p, i, src_list) {
+        if (spctrm_scn_dev_find_by_sn(dest_list, p->series_no) == FAIL) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+int spctrm_scn_dev_modify(struct device_list *device_list,struct device_info *device)
 {
     int pos;
 
@@ -11,13 +27,13 @@ int modify_device(struct device_list *device_list,struct device_info *device)
         return FAIL;
     } 
 
-    pos = find_device_by_sn(device_list,device->series_no);
+    pos = spctrm_scn_dev_find_by_sn(device_list,device->series_no);
 
     
     memcpy(&device_list[pos],device,sizeof(struct device_info));
      
 }
-int find_ap(struct device_list *device_list)
+int spctrm_scn_dev_find_ap(struct device_list *device_list)
 {
 	int i;
 	for (i = 0;i < device_list->list_len;i++) {
@@ -26,7 +42,7 @@ int find_ap(struct device_list *device_list)
 		}
 	}
 }
-void clear_device_finish_flag(struct device_list *list) {
+void spctrm_scn_dev_reset_stat(struct device_list *list) {
 	struct device_info *p;
 	int i;
 	list_for_each_device(p, i, list) {
@@ -49,7 +65,7 @@ int show_device_info(struct device_info *device_info) {
 	
 }
 
-int find_device_by_sn(struct device_list *device_list,char *series_no)
+int spctrm_scn_dev_find_by_sn(struct device_list *device_list,char *series_no)
 {
 	int i;
 
@@ -60,7 +76,7 @@ int find_device_by_sn(struct device_list *device_list,char *series_no)
 	}
 	return FAIL;
 }
-int all_devices_finished(struct device_list *device_list) {
+int spctrm_scn_dev_chk_stat(struct device_list *device_list) {
 	
 	struct device_info *p;
 	int i;
@@ -73,10 +89,10 @@ int all_devices_finished(struct device_list *device_list) {
 
 	return SUCCESS;
 }
-void get_online_device(struct device_list *device_list)
+void spctrm_scn_dev_wds_list(struct device_list *device_list)
 {
 	char *rbuf;
-
+	char sn[SN_LEN];
 	int i;
 
 	json_object *rbuf_root;
@@ -85,11 +101,16 @@ void get_online_device(struct device_list *device_list)
 	json_object *sn_obj,*role_obj,*mac_obj;
 	json_object *list_all_elem ;
 	
-	execute_cmd("dev_sta get -m wds_list_all",&rbuf);
+	spctrm_scn_common_cmd("dev_sta get -m wds_list_all",&rbuf);
 
 	rbuf_root = json_tokener_parse(rbuf);
 	list_all_obj = json_object_object_get(rbuf_root,"list_all");
 	debug("");
+	spctrm_scn_common_get_sn(sn);
+	debug("%s",sn);
+	// for (i = 0;i < json_object_array_length(list_all_obj);i++) {
+	// 	list_all_elem = json_object_array_get_idx(list_all_obj,i);
+	// }
 	list_all_elem = json_object_array_get_idx(list_all_obj,0);
 	debug("");
 	list_pair_obj = json_object_object_get(list_all_elem,"list_pair");

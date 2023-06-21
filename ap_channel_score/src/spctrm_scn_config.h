@@ -1,8 +1,15 @@
-/* channel_score_config.h */
-#ifndef _CHANNEL_SCORE_CONFIG_H_
-#define _CHANNEL_SCORE_CONFIG_H_
+/* spctrm_scn_config.h */
+#ifndef _SPCTRM_SCN_CONFIG_H_
+#define _SPCTRM_SCN_CONFIG_H_
 
-#include "tools.h"
+#include "spctrm_scn_common.h"
+
+#define SN_LEN 14
+
+#define MIN_SCAN_TIME 15 
+#define MAX_SCAN_TIME 60
+#define ONE_BYTE 8
+#define EXPIRE_TIME 14
 
 #define POPEN_CMD_ENABLE
 #define BRIDGE_PLATFORM
@@ -11,6 +18,8 @@
 #define P2P
 
 #define MAX_POPEN_BUFFER_SIZE   8192
+#define BW_40 40
+#define BW_80 80
 
 #define SCAN_BUSY       1
 #define SCAN_IDLE       2

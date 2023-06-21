@@ -12,18 +12,15 @@
  */
 
 
-#include "ubus_thread.h"
-#include "channel_score_config.h"
-#include "composite_score.h"
-#include "device_list.h"
+#include "spctrm_scn_ubus.h"
+#include "spctrm_scn_config.h"
+#include "spctrm_scn_dev.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <math.h> 
 
 #define MAX(a,b) ((a)>(b)?(a):(b))
-#ifdef P2P
-extern int g_sd;
-#endif
+
 extern struct channel_info g_channel_info_5g[MAX_BAND_5G_CHANNEL_NUM];
 extern struct channel_info realtime_channel_info_5g[36];
 extern time_t g_current_time;
@@ -83,97 +80,11 @@ static struct ubus_object channel_score_object = {
 };
 
 
-extern int  get_channel_info(struct channel_info *info,int band);
-extern double calculate_channel_score(struct channel_info *info);
+extern int  spctrm_scn_wireless_channel_info(struct channel_info *info,int band);
+extern double spctrm_scn_wireless_channel_score(struct channel_info *info);
 extern double calculate_N(struct channel_info *info);
 
 
-
-#ifdef CS
-int send_remote_scan_msg(struct device_list *list,int wait_sec) 
-{
-	
-	struct device_info *p;
-	int instant = 0;
-	int i;
-	
-	memset(list,0,sizeof(struct device_list));
-	get_online_device(list);
-
-    debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
-	list_for_each_device(p,i,list) {
-		if (strcmp(p->role,"ap") != 0) {
-			instant = rg_mist_mac_2_nodeadd(p->mac);
-			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
-
-			if (tipc_msg_send(SERVER_TYPE_SCAN,instant,&g_input,sizeof(struct user_input),wait_sec) != FAIL) {
-				printf("%x\r\n",g_input.channel_bitmap);
-			}
-
-		}	
-	}
-}
-int get_remote_channel_list(struct device_list *dst_list,int wait_sec)
-{
-	struct device_info *p;
-	int i,instant;
-
-		list_for_each_device(p,i,dst_list) {
-		if (strcmp(p->role,"ap") != 0) {	
-			instant = rg_mist_mac_2_nodeadd(p->mac);
-			debug("instant : %x ",instant);
-			if (tipc_msg_send_receive(SERVER_TYPE_GET,instant,p->channel_info,36 * sizeof(struct channel_info),wait_sec) == FAIL) {
-				return FAIL;
-			} else {
-				
-			}
-
-			debug("p->channel_info[0].floornoise : %d",p->channel_info[0].floornoise);
-		}	
-	}
-	return SUCCESS;
-}
-#elif defined P2P
-int send_remote_scan_msg(struct device_list *list,int wait_sec) 
-{
-	
-	struct device_info *p;
-	__u32 instant = 0;
-	int i;
-	
-	memset(list,0,sizeof(struct device_list));
-	get_online_device(list);
-
-    debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
-	list_for_each_device(p,i,list) {
-		if (strcmp(p->role,"ap") != 0) {
-			instant = rg_mist_mac_2_nodeadd(p->mac);
-			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
-
-			tipc_p2p_send(instant,SERVER_TYPE_SCAN,sizeof(g_input),&g_input);
-		}	
-	}
-
-}
-int get_remote_channel_list(struct device_list *dst_list,int wait_sec) 
-{
-	
-	struct device_info *p;
-	__u32 instant;
-	int i;
-	char hello[19] = "client get message";
-		list_for_each_device(p,i,dst_list) {
-		if (strcmp(p->role,"ap") != 0) {	
-			instant = rg_mist_mac_2_nodeadd(p->mac);
-			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
-			if (tipc_p2p_send_receive(instant,SERVER_TYPE_GET,19,hello) == FAIL) {
-				return FAIL;
-			}
-		}	
-	}
-	return SUCCESS;
-}
-#endif
 
 static void scan_reply(struct uloop_timeout *t)
 {
@@ -185,8 +96,8 @@ static void scan_reply(struct uloop_timeout *t)
 
 	blob_buf_init(&b, 0);
 
-	get_channel_info(&current_channel_info, PLATFORM_5G);
-	current_channel_info.score = calculate_channel_score(&current_channel_info);
+	spctrm_scn_wireless_channel_info(&current_channel_info, PLATFORM_5G);
+	current_channel_info.score = spctrm_scn_wireless_channel_score(&current_channel_info);
 
 	sprintf(temp,"%d",current_channel_info.channel);
 	blobmsg_add_string(&b, "current_channel", temp);
@@ -231,10 +142,10 @@ static void realtime_get_reply(struct uloop_timeout *t)
 
 	memset(&g_device_list,0,sizeof(g_device_list)); /* xxx */
 
-	get_online_device(&g_device_list);
-	clear_device_finish_flag(&g_device_list);
+	spctrm_scn_dev_wds_list(&g_device_list);
+	spctrm_scn_dev_reset_stat(&g_device_list);
 	/* find AP */
-	i = find_ap(&g_device_list);
+	i = spctrm_scn_dev_find_ap(&g_device_list);
 	debug("%s i = %d",__func__,i);
 	
 	memcpy(g_device_list.device[i].channel_info,realtime_channel_info_5g,sizeof(realtime_channel_info_5g));
@@ -245,7 +156,7 @@ static void realtime_get_reply(struct uloop_timeout *t)
 
 	add_timestamp_blobmsg(&buf,&g_current_time);
 
-	if (get_remote_channel_list(&g_device_list,4) == FAIL) {
+	if (spctrm_scn_tipc_send_get_msg(&g_device_list,4) == FAIL) {
 		debug("timeout");
 		goto timeout;
 	}
@@ -573,7 +484,7 @@ static void get_reply(struct uloop_timeout *t)
 
 	
 	/* find AP */
-	i = find_ap(&g_finished_device_list);
+	i = spctrm_scn_dev_find_ap(&g_finished_device_list);
 
 	
 	memcpy(g_finished_device_list.device[i].channel_info,g_channel_info_5g,sizeof(g_channel_info_5g));
@@ -594,7 +505,7 @@ static void get_reply(struct uloop_timeout *t)
 
 
 	add_timestamp_blobmsg(&buf,&g_current_time);
-	// get_remote_channel_list(&g_finished_device_list, 4);
+	// spctrm_scn_tipc_send_get_msg(&g_finished_device_list, 4);
 	debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
 	/* scan list*/
 	void * const scan_list_obj = blobmsg_open_array(&buf, "scan_list");
@@ -753,9 +664,9 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 			goto error;
 		}
 
-		get_channel_info(&channel_info, blobmsg_get_u32(tb[BAND]));
+		spctrm_scn_wireless_channel_info(&channel_info, blobmsg_get_u32(tb[BAND]));
 
-		total_band_num = get_country_channel_bitmap(channel_info.bw,&bitmap_2G,&bitmap_5G,PLATFORM_5G);
+		total_band_num = spctrm_scn_wireless_country_channel(channel_info.bw,&bitmap_2G,&bitmap_5G,PLATFORM_5G);
 		g_input.band = blobmsg_get_u32(tb[BAND]);
 
 		if (tb[SCAN_TIME]) {
@@ -811,8 +722,8 @@ static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 
 		g_status = SCAN_BUSY;
 		
-		send_remote_scan_msg(&g_finished_device_list,1000);
-		// clear_device_finish_flag(&g_finished_device_list);
+		spctrm_scn_tipc_send_start_msg(&g_finished_device_list,1000);
+		// spctrm_scn_dev_reset_stat(&g_finished_device_list);
 		sem_post(&g_semaphore);
 		pthread_mutex_unlock(&g_mutex);
 		
@@ -898,7 +809,7 @@ static void server_main(void)
 
 	uloop_run();
 }
-void *ubus_thread(void *arg) 
+void *spctrm_scn_ubus_thread(void *arg) 
 {
 	const char *ubus_socket = NULL;
 

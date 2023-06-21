@@ -1,7 +1,7 @@
 
-#include "tipc_func.h"
-#include "channel_score_config.h"
-#include "device_list.h"
+#include "spctrm_scn_tipc.h"
+#include "spctrm_scn_config.h"
+#include "spctrm_scn_dev.h"
 #include <netinet/in.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -17,44 +17,49 @@ extern pthread_mutex_t g_mutex;
 extern sem_t g_semaphore;
 
 static sem_t receive_finish_semaphore;
-char rg_misc_read_file(char *name,char *buf,char len) {
-    int fd;
 
-    memset(buf,0,len);
-    fd = open(name, O_RDONLY);
-    if (fd > 0) {
-        read(fd,buf,len);
-        close(fd);
-        if (buf[strlen(buf) - 1] == '\n') {
-            buf[strlen(buf) - 1] = 0;
-        }
-        return SUCCESS;
-    }
-    return FAIL;
-}
-int rg_mist_mac_2_nodeadd(unsigned char *mac_src)
+int spctrm_scn_tipc_send_start_msg(struct device_list *list,int wait_sec) 
 {
-    unsigned int mac[6];
-    unsigned int tmp;
-    char buf[30];
+	
+	struct device_info *p;
+	__u32 instant = 0;
+	int i;
+	
+	memset(list,0,sizeof(struct device_list));
+	spctrm_scn_dev_wds_list(list);
 
-    memset(mac,0,sizeof(mac));
-    if (sscanf(mac_src, "%2x:%2x:%2x:%2x:%2x:%2x",&mac[0],&mac[1],&mac[2],&mac[3],&mac[4],&mac[5]) != 6) {
-        perror("please input right like :rg_tipc_mac_to_nodeadd aa:bb:cc:dd:ee:ffi \n");
-        exit(0);
-    }
+    debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
+	list_for_each_device(p,i,list) {
+		if (strcmp(p->role,"ap") != 0) {
+			instant = spctrm_scn_common_mac_2_nodeadd(p->mac);
+			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
 
-    tmp = (mac[0] ^ mac[1] ^ mac[2]) & 0xff;
-    tmp = (tmp & 0x0f) ^ (tmp >> 4);
+			spctrm_scn_tipc_send(instant,SERVER_TYPE_SCAN,sizeof(g_input),&g_input);
+		}	
+	}
 
-    memset(buf,0,sizeof(buf));
-    sprintf(buf,"%x%02x%02x%02x",tmp,mac[3],mac[4],mac[5]);
-
-    tmp = 0;
-    sscanf(buf,"%x",&tmp);
-    return tmp;
 }
-int wait_for_server(__u32 name_type, __u32 name_instance, int wait)
+
+int spctrm_scn_tipc_send_get_msg(struct device_list *dst_list,int wait_sec) 
+{
+	
+	struct device_info *p;
+	__u32 instant;
+	int i;
+	char hello[19] = "client get message";
+		list_for_each_device(p,i,dst_list) {
+		if (strcmp(p->role,"ap") != 0) {	
+			instant = spctrm_scn_common_mac_2_nodeadd(p->mac);
+			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
+			if (spctrm_scn_tipc_send_receive(instant,SERVER_TYPE_GET,19,hello) == FAIL) {
+				return FAIL;
+			}
+		}	
+	}
+	return SUCCESS;
+}
+
+static int wait_for_server(__u32 name_type, __u32 name_instance, int wait)
 {
 	struct sockaddr_tipc topsrv;
 	struct tipc_subscr subscr;
@@ -187,7 +192,7 @@ typedef struct tipc_recv_packet_head {
 	size_t payload_size;
 	unsigned int instant;
 }tipc_recv_packet_head_t;
-int tipc_p2p_send_receive(__u32 dst_instance,__u32 type,size_t payload_size,char *payload)
+int spctrm_scn_tipc_send_receive(__u32 dst_instance,__u32 type,size_t payload_size,char *payload)
 {
 	int sd;
 	struct sockaddr_tipc server_addr;
@@ -209,8 +214,8 @@ int tipc_p2p_send_receive(__u32 dst_instance,__u32 type,size_t payload_size,char
 	debug("");
 	pkt = (char*)malloc(pkt_size * sizeof(char));
 	memset(mac,0,sizeof(mac));
-    rg_misc_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
-    src_instant = rg_mist_mac_2_nodeadd(mac);
+    spctrm_scn_common_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
+    src_instant = spctrm_scn_common_mac_2_nodeadd(mac);
 
 	memcpy(pkt+sizeof(tipc_recv_packet_head_t),payload,payload_size);
 	head = (tipc_recv_packet_head_t *)pkt;
@@ -246,7 +251,7 @@ int tipc_p2p_send_receive(__u32 dst_instance,__u32 type,size_t payload_size,char
 
 	for (j = 0;j < 3;j++) {
 		sleep(1);
-		if (all_devices_finished(&g_device_list) == SUCCESS)
+		if (spctrm_scn_dev_chk_stat(&g_device_list) == SUCCESS)
 		{
 			return SUCCESS;
 		}
@@ -254,7 +259,7 @@ int tipc_p2p_send_receive(__u32 dst_instance,__u32 type,size_t payload_size,char
 	return FAIL;
 
 }
-int tipc_p2p_send(__u32 dst_instance,__u32 type,size_t payload_size,char *payload)
+int spctrm_scn_tipc_send(__u32 dst_instance,__u32 type,size_t payload_size,char *payload)
 {
 	int sd;
 	struct sockaddr_tipc server_addr;
@@ -276,8 +281,8 @@ int tipc_p2p_send(__u32 dst_instance,__u32 type,size_t payload_size,char *payloa
 	debug("");
 	pkt = (char*)malloc(pkt_size * sizeof(char));
 	memset(mac,0,sizeof(mac));
-    rg_misc_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
-    src_instant = rg_mist_mac_2_nodeadd(mac);
+    spctrm_scn_common_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
+    src_instant = spctrm_scn_common_mac_2_nodeadd(mac);
 
 	memcpy(pkt+sizeof(tipc_recv_packet_head_t),payload,payload_size);
 	head = (tipc_recv_packet_head_t *)pkt;
@@ -315,7 +320,7 @@ int tipc_p2p_send(__u32 dst_instance,__u32 type,size_t payload_size,char *payloa
 
 }
 
-void *tipc_receive_thread(void * argv)
+void *spctrm_scn_tipc_thread(void * argv)
 {
 
 	struct sockaddr_tipc server_addr;
@@ -340,9 +345,9 @@ void *tipc_receive_thread(void * argv)
 	sem_init(&receive_finish_semaphore,0,0);
 
     memset(mac,0,sizeof(mac));
-    rg_misc_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
+    spctrm_scn_common_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
 
-    instant = rg_mist_mac_2_nodeadd(mac);
+    instant = spctrm_scn_common_mac_2_nodeadd(mac);
 
 	server_addr.family = AF_TIPC;
 	server_addr.addrtype = TIPC_ADDR_NAMESEQ;
@@ -382,10 +387,10 @@ void *tipc_receive_thread(void * argv)
 			debug("g_channel_info_5g %d\r\n",g_channel_info_5g[0].floornoise);
 			debug("g_status %d",g_status);
 			if (g_status == SCAN_BUSY) {
-				tipc_p2p_send(head.instant,SERVER_TYPE_GET_REPLY,sizeof(realtime_channel_info_5g),realtime_channel_info_5g);
+				spctrm_scn_tipc_send(head.instant,SERVER_TYPE_GET_REPLY,sizeof(realtime_channel_info_5g),realtime_channel_info_5g);
 			} else {
 				debug("g_channel_info_5g %d\r\n",g_channel_info_5g[0].floornoise);
-				tipc_p2p_send(head.instant,SERVER_TYPE_GET_REPLY,sizeof(g_channel_info_5g),g_channel_info_5g);
+				spctrm_scn_tipc_send(head.instant,SERVER_TYPE_GET_REPLY,sizeof(g_channel_info_5g),g_channel_info_5g);
 			}
 
 		} else if (head.type == SERVER_TYPE_GET_REPLY) {
@@ -394,7 +399,7 @@ void *tipc_receive_thread(void * argv)
 			__u32 instant = 0;
 			debug("list len %d",g_finished_device_list.list_len);
 			list_for_each_device(p,i,&g_device_list) {
-				instant = rg_mist_mac_2_nodeadd(p->mac);
+				instant = spctrm_scn_common_mac_2_nodeadd(p->mac);
 				debug("instant : %x ",instant);
 				if (instant == head.instant) {	
 					

@@ -1,6 +1,6 @@
-/* ubus_thread.h */
-#ifndef _UBUS_THREAD_H_
-#define _UBUS_THREAD_H_
+/* spctrm_scn_ubus.h*/
+#ifndef _SPCTRM_SCN_UBUS_H_
+#define _SPCTRM_SCN_UBUS_H_
 
 #include <unistd.h>
 #include <signal.h>
@@ -8,18 +8,14 @@
 #include <json-c/json.h>
 #include <libubox/blobmsg_json.h>
 #include "libubus.h"
-#include "country_channel.h"
-#include "channel_score_config.h"
-#include "device_list.h"
-#include "tipc_func.h"
+#include "spctrm_scn_wireless.h"
+#include "spctrm_scn_config.h"
+#include "spctrm_scn_dev.h"
+#include "spctrm_scn_tipc.h"
 
 
 
 #define MAX_CHANNEL_NUM 200 
-
-
-
-
 
 enum {
 	BAND,
@@ -29,9 +25,9 @@ enum {
 };
 
 
-int get_remote_channel_list(struct device_list *dst_list,int wait_sec);
 
-void *ubus_thread(void *arg);
+
+void *spctrm_scn_ubus_thread(void *arg);
 static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		      struct ubus_request_data *req, const char *method,
 		      struct blob_attr *msg);

@@ -13,10 +13,9 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <json-c/json.h>
-#include "channel_score_config.h"
-#include "tipc_func.h"
+#include "spctrm_scn_config.h"
+#include "spctrm_scn_tipc.h"
 
-#define SN_LEN 15
 #define ROLE_STRING_LEN 4
 #define FINISHED 	1
 #define NOT_FINISH	0
@@ -46,12 +45,12 @@ dev_list : type device_list
 #define list_for_each_device(p,i,dev_list) \
     for ((p) = (dev_list)->device,i = 0;i < (dev_list)->list_len;p++,i++)
 
-int all_devices_finished(struct device_list *device_list);
-int show_device_info(struct device_info *device_info);
-int modify_device(struct device_list *device_list,struct device_info *device);
-int find_device_by_sn(struct device_list *device_list,char *series_no);
-int find_ap(struct device_list *device_list);
-void get_online_device(struct device_list *device_list);
-void clear_device_finish_flag(struct device_list *list);
+int spctrm_scn_dev_chk_stat(struct device_list *device_list);
+int spctrm_scn_dev_modify(struct device_list *device_list,struct device_info *device);
+int spctrm_scn_dev_find_by_sn(struct device_list *device_list,char *series_no);
+int spctrm_scn_dev_find_ap(struct device_list *device_list);
+void spctrm_scn_dev_wds_list(struct device_list *device_list);
+void spctrm_scn_dev_reset_stat(struct device_list *list);
+int spctrm_scn_dev_list_cmp(struct device_list *src_list,struct device_list *dest_list);
 
 #endif
