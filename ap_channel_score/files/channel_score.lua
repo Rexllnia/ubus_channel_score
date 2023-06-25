@@ -9,7 +9,7 @@ module_debug = require "utils.debug"
 lib_param = require "utils.param_check"
 uci = require("uci")
 
-config_file = "/tmp/channel_score_tmp"
+config_file = "/etc/channel_score_cache"
 -- read the exist file
 -- @path: File path
 -- @return file content, if the action success; otherwise return nil.
@@ -96,6 +96,7 @@ function module_get(param)
             config_tab = file_read(config_file)
         else
             config_tab = cjson_safe.encode(status)
+            file_write(config_file,config_tab)
         end
         -- Close connection
         conn:close()

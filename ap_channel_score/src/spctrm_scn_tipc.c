@@ -27,36 +27,38 @@ int spctrm_scn_tipc_send_start_msg(struct device_list *list,int wait_sec)
 	
 	memset(list,0,sizeof(struct device_list));
 	spctrm_scn_dev_wds_list(list);
-
-    debug("g_finished_device_list.list_len %d",g_finished_device_list.list_len);
 	list_for_each_device(p,i,list) {
 		if (strcmp(p->role,"ap") != 0) {
 			instant = spctrm_scn_common_mac_2_nodeadd(p->mac);
-			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
-
+			debug("send to mac %x",p->mac);
 			spctrm_scn_tipc_send(instant,SERVER_TYPE_SCAN,sizeof(g_input),&g_input);
 		}	
 	}
-
 }
 
 int spctrm_scn_tipc_send_get_msg(struct device_list *dst_list,int wait_sec) 
 {
-	
 	struct device_info *p;
 	__u32 instant;
 	int i;
 	char hello[19] = "client get message";
-		list_for_each_device(p,i,dst_list) {
-		if (strcmp(p->role,"ap") != 0) {	
+
+	list_for_each_device(p,i,dst_list) {
+		if (strcmp(p->role,"ap") != 0 && p->finished_flag != FINISHED ) {	
 			instant = spctrm_scn_common_mac_2_nodeadd(p->mac);
 			printf("line : %d fun : %s instant : %x \r\n",__LINE__,__func__,instant);
-			if (spctrm_scn_tipc_send_receive(instant,SERVER_TYPE_GET,19,hello) == FAIL) {
-				return FAIL;
-			}
+			spctrm_scn_tipc_send(instant,SERVER_TYPE_GET,sizeof(hello),hello);
 		}	
 	}
-	return SUCCESS;
+
+	for (i = 0;i < 3;i++) {
+		sleep(1);
+		if (spctrm_scn_dev_chk_stat(&g_device_list) == SUCCESS)
+		{
+			return SUCCESS;
+		}
+	}
+	return FAIL;
 }
 
 static int wait_for_server(__u32 name_type, __u32 name_instance, int wait)
@@ -65,6 +67,7 @@ static int wait_for_server(__u32 name_type, __u32 name_instance, int wait)
 	struct tipc_subscr subscr;
 	struct tipc_event event;
 
+	
 	int sd = socket(AF_TIPC, SOCK_SEQPACKET, 0);
 
 	memset(&topsrv, 0, sizeof(topsrv));
@@ -92,7 +95,6 @@ static int wait_for_server(__u32 name_type, __u32 name_instance, int wait)
 		close(sd);
 		return FAIL;
 	}
-	printf("line : %d fun : %s \r\n",__LINE__,__func__);
 
 	/* Now wait for the subscription to fire */
 	if (recv(sd, &event, sizeof(event), 0) != sizeof(event)) {
@@ -102,10 +104,9 @@ static int wait_for_server(__u32 name_type, __u32 name_instance, int wait)
 		return FAIL;
 	}
 
-	printf("line : %d fun : %s \r\n",__LINE__,__func__);
 
 	if (event.event != htonl(TIPC_PUBLISHED)) {
-		printf("Client: server {%u,%u} not published within %u [s]\n",
+		printf("Client: server {%d,%d} not published within %u [s]\n",
 		       name_type, name_instance, wait/1000);
 			
 		close(sd);
@@ -114,84 +115,7 @@ static int wait_for_server(__u32 name_type, __u32 name_instance, int wait)
 	}
 	close(sd);
 }
-int tipc_msg_send(__u32 name_type, __u32 name_instance,void *buf,ssize_t size, int wait)
-{
-	int sd;
-	struct sockaddr_tipc server_addr;
 
-	printf("****** TIPC client hello world program started ******\n\n");
-
-	if (wait_for_server(name_type, name_instance, wait) == FAIL) {
-		return FAIL;
-	}
-	printf("line : %d fun : %s \r\n",__LINE__,__func__);
-
-	sd = socket(AF_TIPC, SOCK_RDM, 0);
-
-	server_addr.family = AF_TIPC;
-	server_addr.addrtype = TIPC_ADDR_NAME;
-	server_addr.addr.name.name.type = name_type;
-	server_addr.addr.name.name.instance = name_instance;
-	server_addr.addr.name.domain = 0;
-
-	if (0 > sendto(sd, buf, size, 0,
-	                (struct sockaddr*)&server_addr, sizeof(server_addr))) {
-		perror("Client: failed to send");
-		
-	}
-
-	close(sd); /* xxx */
-	printf("\n****** TIPC client hello program finished ******\n");
-	
-}
-int tipc_msg_send_receive(__u32 name_type, __u32 name_instance,void *buf,ssize_t size, int wait_sec)
-{
-	int sd;
-	struct sockaddr_tipc server_addr;
-
-	struct timeval timeout={4,0};
-
-	timeout.tv_sec = wait_sec;
-	
-	printf("****** TIPC client hello world program started ******\n\n");
-
-	if (wait_for_server(name_type, name_instance, 100) == FAIL) {
-		return FAIL;
-	}
-
-	printf("line : %d fun : %s \r\n",__LINE__,__func__);
-
-	sd = socket(AF_TIPC, SOCK_RDM, 0);
-
-	setsockopt(sd,SOL_SOCKET,SO_RCVTIMEO,(char*)&timeout,sizeof(struct timeval));
-	server_addr.family = AF_TIPC;
-	server_addr.addrtype = TIPC_ADDR_NAME;
-	server_addr.addr.name.name.type = name_type;
-	server_addr.addr.name.name.instance = name_instance;
-	server_addr.addr.name.domain = 0;
-
-
-	if (0 > sendto(sd, buf,size, 0,
-	                (struct sockaddr*)&server_addr, sizeof(server_addr))) {
-		perror("Client: failed to send");
-		return FAIL;
-	}
-
-	if (0 >= recv(sd, buf, size, 0)) {
-		perror("Client: unexpected response");
-		return FAIL;
-	}
-	printf("line : %d fun : %s \r\n",__LINE__,__func__);
-	close(sd); /* xxx */
-	printf("\n****** TIPC client hello program finished ******\n");
-	
-}
-
-typedef struct tipc_recv_packet_head {
-	unsigned int type;
-	size_t payload_size;
-	unsigned int instant;
-}tipc_recv_packet_head_t;
 int spctrm_scn_tipc_send_receive(__u32 dst_instance,__u32 type,size_t payload_size,char *payload)
 {
 	int sd;
@@ -202,16 +126,13 @@ int spctrm_scn_tipc_send_receive(__u32 dst_instance,__u32 type,size_t payload_si
 	char *pkt;
 	tipc_recv_packet_head_t *head;
 	size_t pkt_size;
-
 	int j;
 
 	if(wait_for_server(SERVER_TYPE, ntohl(dst_instance), 100) == FAIL) {
 		return FAIL;
 	}
 	
-	debug("");
 	pkt_size = sizeof(tipc_recv_packet_head_t) + payload_size;
-	debug("");
 	pkt = (char*)malloc(pkt_size * sizeof(char));
 	memset(mac,0,sizeof(mac));
     spctrm_scn_common_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
@@ -224,13 +145,6 @@ int spctrm_scn_tipc_send_receive(__u32 dst_instance,__u32 type,size_t payload_si
 	head->instant = src_instant;
 	head->type = type;
 	head->payload_size = payload_size;
-
-	// struct channel_info cp[36];
-	// memcpy(cp,(head + sizeof(tipc_recv_packet_head_t)),sizeof(cp));
-	// debug("%d",cp[0].obss_util);
-	// debug("%d",cp[0].floornoise);
-	// printf("****** TIPC client hello world program started ******\n\n");
-
 
 
 	sd = socket(AF_TIPC, SOCK_RDM, 0);
@@ -249,14 +163,7 @@ int spctrm_scn_tipc_send_receive(__u32 dst_instance,__u32 type,size_t payload_si
 	}
 	close(sd);
 
-	for (j = 0;j < 3;j++) {
-		sleep(1);
-		if (spctrm_scn_dev_chk_stat(&g_device_list) == SUCCESS)
-		{
-			return SUCCESS;
-		}
-	}
-	return FAIL;
+	return SUCCESS;
 
 }
 int spctrm_scn_tipc_send(__u32 dst_instance,__u32 type,size_t payload_size,char *payload)
@@ -276,9 +183,7 @@ int spctrm_scn_tipc_send(__u32 dst_instance,__u32 type,size_t payload_size,char 
 		return FAIL;
 	}
 	
-	debug("");
 	pkt_size = sizeof(tipc_recv_packet_head_t) + payload_size;
-	debug("");
 	pkt = (char*)malloc(pkt_size * sizeof(char));
 	memset(mac,0,sizeof(mac));
     spctrm_scn_common_read_file("/proc/rg_sys/sys_mac",mac,sizeof(mac) - 1);
@@ -291,13 +196,6 @@ int spctrm_scn_tipc_send(__u32 dst_instance,__u32 type,size_t payload_size,char 
 	head->instant = src_instant;
 	head->type = type;
 	head->payload_size = payload_size;
-
-	// struct channel_info cp[36];
-	// memcpy(cp,(head + sizeof(tipc_recv_packet_head_t)),sizeof(cp));
-	// debug("%d",cp[0].obss_util);
-	// debug("%d",cp[0].floornoise);
-	// printf("****** TIPC client hello world program started ******\n\n");
-
 
 
 	sd = socket(AF_TIPC, SOCK_RDM, 0);
@@ -340,7 +238,7 @@ void *spctrm_scn_tipc_thread(void * argv)
     limit.rlim_max = RLIM_INFINITY;
     setrlimit(RLIMIT_CORE, &limit);
 #endif
-	printf("****** TIPC server hello world program started ******\n\n");
+	printf("****** TIPC server program started ******\n\n");
 
 	sem_init(&receive_finish_semaphore,0,0);
 
@@ -399,16 +297,19 @@ void *spctrm_scn_tipc_thread(void * argv)
 			__u32 instant = 0;
 			debug("list len %d",g_finished_device_list.list_len);
 			list_for_each_device(p,i,&g_device_list) {
-				instant = spctrm_scn_common_mac_2_nodeadd(p->mac);
-				debug("instant : %x ",instant);
-				if (instant == head.instant) {	
-					
-					memcpy(p->channel_info,pkt+sizeof(tipc_recv_packet_head_t),head.payload_size);
-					p->finished_flag = FINISHED;
-					debug("p->finished_flag %d",p->finished_flag);
-					debug("p->channel_info[0].channel %d",p->channel_info[0].channel); 
-					debug("p->channel_info[0].floornoise %d",p->channel_info[0].floornoise);
-				}	
+				if (p->finished_flag != FINISHED) {
+					instant = spctrm_scn_common_mac_2_nodeadd(p->mac);
+					debug("instant : %x ",instant);
+					if (instant == head.instant) {	
+						
+						memcpy(p->channel_info,pkt+sizeof(tipc_recv_packet_head_t),head.payload_size);
+						p->finished_flag = FINISHED;
+						debug("p->finished_flag %d",p->finished_flag);
+						debug("p->channel_info[0].channel %d",p->channel_info[0].channel); 
+						debug("p->channel_info[0].floornoise %d",p->channel_info[0].floornoise);
+					}
+				}
+	
 			}
 		} else if (head.type == SERVER_TYPE_SCAN) {
 			debug("SERVER_TYPE_SCAN");
@@ -432,7 +333,6 @@ void *spctrm_scn_tipc_thread(void * argv)
 		}
 	debug("free");
 	free(pkt);
-		// printf("Server: Message received: %s !\n", pkt+sizeof(head));
 	}
 		
     return 0;

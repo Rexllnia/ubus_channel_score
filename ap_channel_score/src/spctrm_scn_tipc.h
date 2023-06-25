@@ -29,6 +29,12 @@
 #define SERVER_INST  17
 #define BUF_SIZE 40
 
+typedef struct tipc_recv_packet_head {
+	unsigned int type;
+	size_t payload_size;
+	unsigned int instant;
+}tipc_recv_packet_head_t;
+
 int spctrm_scn_tipc_send_get_msg(struct device_list *dst_list,int wait_sec);
 int spctrm_scn_tipc_send_start_msg(struct device_list *list,int wait_sec) ;
 

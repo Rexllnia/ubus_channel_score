@@ -18,8 +18,11 @@
 #define P2P
 
 #define MAX_POPEN_BUFFER_SIZE   8192
+
+#define BW_20 20
 #define BW_40 40
 #define BW_80 80
+#define BW_160 160
 
 #define SCAN_BUSY       1
 #define SCAN_IDLE       2
@@ -39,9 +42,11 @@
 #define CPE_MODE 1
 unsigned char g_mode;
 
-#define debug(...)  printf("file : %s line: %d func: %s -->",__FILE__,__LINE__,__func__); \
+#define debug(...)  do {\
+                    printf("file : %s line: %d func: %s -->",__FILE__,__LINE__,__func__); \
                     printf(__VA_ARGS__);\
-                    printf("\r\n")
+                    printf("\r\n"); \
+} while(0)
 
 struct user_input {
     int band;

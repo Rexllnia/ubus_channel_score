@@ -50,6 +50,7 @@ int spctrm_scn_common_cmd(char *cmd,char **rbuf)
     if (fp == NULL) {
         return FAIL;
     }
+    
     if (rbuf == NULL) {
         pclose(fp);
         return SUCCESS;
@@ -87,30 +88,30 @@ int spctrm_scn_common_uci_anonymous_get(char *file, char *type, char *name, char
     struct uci_section *sec = NULL;
     struct uci_element *ele = NULL;
     const char *str = NULL;
-    char ret = -1;
+    char ret = FAIL;
 
     if (file == NULL) {
-        return -1;
+        return FAIL;
     }
     if (type == NULL) {
-        return -1;
+        return FAIL;
     }
     if (name == NULL) {
-        return -1;
+        return FAIL;
     }
     if (option == NULL) {
-        return -1;
+        return FAIL;
     }
     if (buf == NULL) {
-        return -1;
+        return FAIL;
     }
     if (len <= 0) {
-        return -1;
+        return FAIL;
     }
 
     ctx = uci_alloc_context();
     if (UCI_OK != uci_load(ctx, file, &pkg)) {
-        ret = -1;
+        ret = FAIL;
         goto cleanup;
     }
 
@@ -123,7 +124,7 @@ int spctrm_scn_common_uci_anonymous_get(char *file, char *type, char *name, char
         str = uci_lookup_option_string(ctx, sec, option);
         if (str != NULL) {
             strncpy(buf, str, len);
-            ret = 0;
+            ret = SUCCESS;
 			break;							
         }
     }

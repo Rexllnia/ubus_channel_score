@@ -28,6 +28,7 @@ enum {
 
 
 void *spctrm_scn_ubus_thread(void *arg);
+
 static int scan(struct ubus_context *ctx, struct ubus_object *obj,
 		      struct ubus_request_data *req, const char *method,
 		      struct blob_attr *msg);
