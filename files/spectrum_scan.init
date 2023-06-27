@@ -20,7 +20,7 @@ start() {
 	    rm /tmp/spectrum_scan/curl_pid &> /dev/null
     fi
 
-#     ${USR_PROC} &
+    ${USR_PROC} &
     echo "spectrum_scan has start."
 }
 

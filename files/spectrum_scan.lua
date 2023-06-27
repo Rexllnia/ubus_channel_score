@@ -1,6 +1,6 @@
 #! /usr/bin/lua
 
-module("channel_score", package.seeall);  --必须要有
+module("spectrum_scan", package.seeall);  --必须要有
 -- Load module
 ubus = require "ubus"
 json = require "dkjson"
@@ -9,7 +9,7 @@ module_debug = require "utils.debug"
 lib_param = require "utils.param_check"
 uci = require("uci")
 
-config_file = "/etc/channel_score_cache"
+config_file = "/etc/spectrum_scan_cache"
 -- read the exist file
 -- @path: File path
 -- @return file content, if the action success; otherwise return nil.
@@ -60,11 +60,11 @@ function module_set(param)
     if not conn then
         error("Failed to connect to ubusd")
     end
-    local status = conn:call("channel_score", "scan",param_tab)
+    local status = conn:call("spectrum_scan", "scan",param_tab)
     config_tab = cjson_safe.encode(status)
     -- Close connection
     conn:close()
-    print(config_tab)
+    return (config_tab)
 end
 
 --dev_sta需要有，dev_config ac_config不调用这个
@@ -79,7 +79,7 @@ function module_get(param)
         if not conn then
             error("Failed to connect to ubusd")
         end
-        local status = conn:call("channel_score", "realtime_get",{})
+        local status = conn:call("spectrum_scan", "realtime_get",{})
         config_tab = cjson_safe.encode(status)
         -- Close connection
         conn:close()
@@ -89,7 +89,7 @@ function module_get(param)
         if not conn then
             error("Failed to connect to ubusd")
         end
-        local status = conn:call("channel_score", "get",{})
+        local status = conn:call("spectrum_scan", "get",{})
 
 
         if  status["status_code"] == "0" then
@@ -101,14 +101,14 @@ function module_get(param)
         -- Close connection
         conn:close()
     end
-    print(config_tab)
+    return (config_tab)
 end
 
 function module_add(param)
     local param_tab 
     local config_tab
 
-    print(param)
+    return (param)
 end
 
 function module_update(param)
@@ -116,9 +116,9 @@ function module_update(param)
 end
 
 function module_delete(param)
-    print(param)
+    return (param)
 end
 
 function module_apply(param, cmd)
-    print(param)
+    return (param)
 end
